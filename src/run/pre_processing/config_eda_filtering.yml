@@ -8,4 +8,4 @@ clean_plots: True
 mode: 2
 device: "E4"
 concat_sessions: True
-subset_data: False
+subset_data: True

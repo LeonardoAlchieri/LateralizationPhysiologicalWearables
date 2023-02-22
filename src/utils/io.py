@@ -1,7 +1,6 @@
 from typing import Any
 from glob import glob
 from logging import getLogger
-from joblib import Parallel, delayed
 from tqdm import tqdm
 from collections import defaultdict
 from yaml import safe_load as load_yaml
@@ -108,137 +107,118 @@ def load_nested_parquet_data(
         }
 
 
-def load_and_process_csv_data(
+
+# TODO: remove one folder level → can just use a Series w/o problems
+def load_and_prepare_data(
     path_to_main_folder: str,
     side: str | None = None,
-    device: str = "E4",
-    n_jobs: int = -1,
-    mode: int = 1,
     data_type: str | None = None,
-) -> DataFrame:
-    """Load the data as given by Elena, i.e. in a tested structure of type
+    mode: int = 1,
+    device: str = "E4",
+) -> defaultdict[str, defaultdict[str, dict[str, Series]]] | defaultdict[
+    str, dict[str, Series | DataFrame]
+]:
+    """Simple method to load multiple parquet files in a folder > subfolder structure.
+    The main folder should be given, and then the method will crawl and load all of the
+    parquet files inside the folder structure, which is expected as:
     ```
-    <user>/<side>/<data_type>.csv
+    <main_folder>/<side>/<data_type>/files.parquet
     ```
-    The data is loaded and then concatenated into a single DataFrame, to be saved as a
-    file, either parquet or csv.
+    where `<side>` is expected to be either 'left' or 'right'
 
     Parameters
     ----------
     path_to_main_folder : str
-        the path to the root of the folder where the nested strucurre is expected
+        path to the folder
     side : str | None, optional
-        side to be extracted, if None both 'left' and 'right', by default None
-    n_jobs : int, optional
-        number of jobs to parallelize loading (see `joblib`), by default -1
-    device: str, optional
-        device to be used, by default 'E4'. Accepted values are 'E4' and 'Oura'
-    mode: int, optional
-        mode to be used, by default 1. Accepted values are 1 and 2. If mode 1,
-        assume structure as USILaughs. If mode 2, assume structure as MWC2022.
-    data_type: str | None, optional
-        data type to be extracted, if None all data types, by default None
+        side for the folder structure; it must thus match it (usually 'left' or 'right'
+        expected); by default None. If None, it will be assumed to get both the 'left'
+        and 'right' side. Defaults to None.
+    data_type : str | None, optional
+        data type for the folder structure; it must thus match it (e.g. 'EDA'); by default None.
 
-    Raises
-    ------
-    ValueError
-        if a `mode` different from 1 or 2 is provided, raise a ValueError
+    Returns
+    -------
+    defaultdict[str, defaultdict[str, Series | DataFrame]]
+        the method returns a loaded default dictionary, with a triple structure:
+        ```
+        {side: {data_type: {user: Series or DataFrame}}}
+        ```
+        where `Series` (or `DataFrame`) is a Series (DataFrame) associated with the user
     """
-
+    # FIXME: change from Series to series, or remove one level of dictionary
     if side is None:
         logger.debug("No side provided. Assuming both sides")
         sides: list[str] = ["right", "left"]
-    elif side == "right" or side == "left":
-        sides: list[str] = [side]
     else:
-        raise ValueError(
-            f"Side not recognized. Got {side} instead of 'right' or 'left' or None."
-        )
-    del side  # NOTE: do not want to risk having stuff around not needed
+        sides: list[str] = [side]
 
-    logger.info(f"Loading csv data from {path_to_main_folder}")
-    all_data_as_dict: defaultdict[str, defaultdict[str, DataFrame]] = defaultdict(
-        lambda: defaultdict(dict)
-    )
+    all_data_as_dict: defaultdict[
+        str, defaultdict[str, defaultdict[str, Series]]
+    ] = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     for chosen_side in sides:
+        logger.info(f"Loading for side {chosen_side}")
         if mode == 1:
             path_current_side_data: list[str] = glob(
-                f"{path_to_main_folder}/*/*_{chosen_side}/*.csv"
+                f"{path_to_main_folder}/*/*_{chosen_side}/{data_type}_*.csv"
             )
         elif mode == 2:
             path_current_side_data: list[str] = glob(
-                f"{path_to_main_folder}/*/*/{device}/{chosen_side}/*.csv"
+                f"{path_to_main_folder}/*/*/{device}/{chosen_side}/{data_type}_*.csv"
             )
         else:
             raise ValueError(f"Mode not recognized. Got {mode} instead of 1 or 2.")
         logger.debug(f"All files to be loaded: {path_current_side_data}")
+        tricky_tags: list[str] = ["tags", "IBI", "Table"]
 
-        for path in tqdm(
-            path_current_side_data, desc=f"Loading csv data for side {chosen_side}"
-        ):
-            if "tags" not in path and "IBI" not in path and "Table" not in path:
+        for path in tqdm(path_current_side_data, desc="Loading data"):
+            # NOTE: this condition can be tested without casting to list, but it will be
+            # slower, for some reason
+            if not any([tag in path for tag in tricky_tags]):
+                data_loaded: DataFrame = read_csv(path, header=[0, 1])
+                data_loaded.attrs["sampling frequency"] = int(
+                    float(data_loaded.columns[0][-1])
+                )
+                data_loaded.attrs["start timestamp [unixtime]"] = data_loaded.columns[
+                    0
+                ][0]
+                # NOTE: if only one column is present, return as Series, otherwise as DataFrame
                 if mode == 1:
-                    all_data_as_dict[chosen_side][path.split("/")[-3]][
-                        path.split("/")[-1].split(".")[0]
-                    ] = read_csv(path, header=[0, 1])
-                elif mode == 2:
                     current_data_name: str = path.split("/")[-1].split(".")[0]
-                    if data_type in current_data_name:
-                        current_user_name: str = path.split("/")[-5]
-                        all_data_as_dict[chosen_side][current_user_name][
-                            current_data_name
-                        ] = read_csv(path, header=[0, 1])
-                    else:
-                        continue
-            else:
-                continue
-
-    del chosen_side
-    if mode == 2:
-        return all_data_as_dict
-    elif mode == 1:
-
-        def make_inner_concat(individual_name: str, inner_dict: dict, side: str):
-            return concat(
-                [
-                    make_timestamp_idx(
-                        dataframe=dataframe.copy(),
-                        side=side,
-                        data_name=data_name,
-                        individual_name=individual_name,
+                    current_user_name: str = path.split("/")[-2]
+                elif mode == 2:
+                    current_data_name: str = (
+                        path.split("/")[-1].split(".")[0].split("_")[0]
                     )
-                    for data_name, dataframe in inner_dict.items()
-                ],
-                axis=1,
-                join="outer",
-            ).sort_index()
+                    current_session_name: str = (
+                        path.split("/")[-1].split(".")[0].split("_")[-1]
+                    )
+                    current_user_name: str = path.split("/")[-5]
+                if len(data_loaded.columns) == 1:
+                    if data_type is None:
+                        all_data_as_dict[chosen_side][current_user_name][
+                            current_session_name
+                        ][current_data_name] = data_loaded.iloc[:, 0]
+                    else:
+                        all_data_as_dict[chosen_side][current_user_name][
+                            current_session_name
+                        ] = data_loaded.iloc[:, 0]
+                else:
+                    if data_type is None:
+                        all_data_as_dict[chosen_side][current_user_name][
+                            current_session_name
+                        ][current_data_name] = data_loaded
+                    else:
+                        all_data_as_dict[chosen_side][current_user_name][
+                            current_session_name
+                        ] = data_loaded.iloc[:, 0]
+                del data_loaded
+            else:
+                NotImplementedError(
+                    f"Tags {tricky_tags} loading is not implemented yet."
+                )
 
-        logger.info("Starting indexing and concatenations")
-
-        df = concat(
-            [
-                concat(
-                    Parallel(n_jobs=n_jobs)(
-                        delayed(make_inner_concat)(
-                            individual_name, inner_dict, chosen_side
-                        )
-                        for individual_name, inner_dict in all_data_as_dict[
-                            chosen_side
-                        ].items()
-                    ),
-                    axis=0,
-                    join="outer",
-                ).sort_index()
-                for chosen_side in all_data_as_dict.keys()
-            ],
-            axis=1,
-            join="outer",
-        ).sort_index()
-        # TODO: I should probably change from the loading paradigm and the indexing part
-        # right above here, but I could not find an interesting way to do it
-        return df
-    else:
-        raise ValueError(f"Mode not recognized. Got {mode} instead of 1 or 2.")
+    return all_data_as_dict
 
 
 def read_experimentinfo(path: str, user: str) -> DataFrame:

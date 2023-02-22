@@ -122,17 +122,18 @@ def make_timestamp_idx(
     """
     #     NOTE: tested the alterative with regex, i.e. split on "." and then cast to int directly
     #     and the time is similar
-    dataframe.attrs["sampling frequency"] = int(float(dataframe.columns[0][-1]))
-    dataframe.attrs["start timestamp [unixtime]"] = dataframe.columns[0][0]
+    # dataframe.attrs["sampling frequency"] = int(float(dataframe.columns[0][-1]))
+    # dataframe.attrs["start timestamp [unixtime]"] = dataframe.columns[0][0]
     dataframe.attrs["start timestamp"] = to_datetime(
         dataframe.attrs["start timestamp [unixtime]"], unit="s", utc=True
     )
     dataframe.attrs["start timestamp"] = dataframe.attrs["start timestamp"].tz_convert(
         "Europe/Rome"
     )
-    if not data_name == "ACC":
-        dataframe.columns = [data_name]
-    else:
+    # if not data_name == "ACC":
+    #     dataframe.columns = [data_name]
+    # else:
+    if data_name == "ACC":
         dataframe.columns = [f"{data_name}_{axis}" for axis in ["x", "y", "z"]]
     index_timestamps = date_range(
         start=dataframe.attrs["start timestamp"],
@@ -140,15 +141,16 @@ def make_timestamp_idx(
         freq=f"{1/dataframe.attrs['sampling frequency']*1000}ms",
     )
 
-    tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
-        (individual_name, index_timestamp) for index_timestamp in index_timestamps
-    ]
-    dataframe.index = MultiIndex.from_tuples(
-        tuples_for_multiindex, names=["participant", "timestamp"]
-    )
-    dataframe.columns = MultiIndex.from_tuples(
-        [(side, current_col) for current_col in dataframe.columns]
-    )
+    dataframe.index = index_timestamps
+    # tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
+    #     (individual_name, index_timestamp) for index_timestamp in index_timestamps
+    # ]
+    # dataframe.index = MultiIndex.from_tuples(
+    #     tuples_for_multiindex, names=["participant", "timestamp"]
+    # )
+    # dataframe.columns = MultiIndex.from_tuples(
+    #     [(side, current_col) for current_col in dataframe.columns]
+    # )
 
     #         NOTE: needed, otherwise not json seriazable
     dataframe.attrs["start timestamp"] = str(dataframe.attrs["start timestamp"])
@@ -332,3 +334,14 @@ def get_cliff_bin(
                 return nan
         else:
             raise ValueError(f"{x} is not in the dull range")
+
+
+def prepare_data_for_concatenation(data: Series, session_name: str) -> Series:
+    tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
+        (session_name, index_timestamp) for index_timestamp in data.index
+    ]
+
+    data.index = MultiIndex.from_tuples(
+        tuples_for_multiindex, names=["session", "timestamp"]
+    )
+    return data

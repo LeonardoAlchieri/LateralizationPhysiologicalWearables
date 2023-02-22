@@ -2,6 +2,7 @@ from glob import glob
 from os import remove as remove_file
 from os.path import join as join_paths
 from pathlib import Path
+from typing import Callable
 
 # from joblib import Parallel, delayed
 from random import choice as choose_randomly
@@ -28,8 +29,63 @@ basicConfig(filename="run_eda_filtering.log", level=DEBUG)
 logger = getLogger("main")
 
 
+def concate_session_data(
+    data_dict: defaultdict[str, dict[str, dict[str, Series]]]
+) -> dict[str, dict[str, Series]]:
+    """Concatenate data from different sessions for each user.
+
+    Args:
+        data_dict (defaultdict[str, dict[str, dict[str, Series]]]): [description]
+
+    Returns:
+        dict[str, dict[str, Series]]: [description]
+    """
+    data_dict: defaultdict[str, dict[str, Series]] = {
+        side: {
+            user: concat(
+                [
+                    prepare_data_for_concatenation(
+                        data=data_dict[side][user][session], session_name=session
+                    )
+                    for session in data_dict[side][user].keys()
+                ],
+                axis=0,
+                join="outer",
+            ).sort_index()
+            for user in data_dict[side].keys()
+        }
+        for side in data_dict.keys()
+    }
+    return data_dict
+
+def rescaling(data: defaultdict[str, dict[str, dict[str, Series]]], rescaling_method: Callable) -> defaultdict[str, dict[str, dict[str, Series]]]:
+    """Rescale data using the specified method.
+
+    Args:
+        data (defaultdict[str, dict[str, dict[str, Series]]]): data to rescale
+        rescaling_method (Callable): method to use for rescaling
+
+    Returns:
+        defaultdict[str, dict[str, dict[str, Series]]]: rescaled data
+    """
+    data: defaultdict[str, dict[str, Series]] = {
+        side: {
+            user: {
+                session: Series(
+                    rescaling_method(data[side][user][session]), index=data[side][user][session].index
+                )
+                for session in data[side][user].keys()
+            }
+            for user in data[side].keys()
+        }
+        for side in data.keys()
+    }
+    return data
+    
+
+
 def main():
-    path_to_config: str = "src/run/config_eda_filtering.yml"
+    path_to_config: str = "src/run/pre_processing/config_eda_filtering.yml"
 
     logger.info("Starting model training")
     configs = load_config(path=path_to_config)
@@ -108,7 +164,7 @@ def main():
             title="Example EDA",
         )
 
-    eda_data_filtered: defaultdict[str, dict[str, ndarray]] = {
+    eda_data_filtered: defaultdict[str, dict[str, dict[str, Series]]] = {
         side: {
             user: {
                 session_name: Series(
@@ -138,19 +194,8 @@ def main():
         )
 
     start = time()
-    # eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
-    #     side: {
-    #         user: Parallel(n_jobs=n_jobs, backend='threading')(
-    #             delayed(decomposition)(
-    #                 session_data,
-    #                 eda_data[side][user][session].attrs["sampling frequency"],
-    #             )
-    #             for session, session_data in user_edat_data.items()
-    #         )
-    #     }
-    #     for side in eda_data_filtered.keys()
-    #     for user, user_edat_data in eda_data_filtered[side].items()
-    # }
+
+
     eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
         side: {
             user: {
@@ -158,9 +203,6 @@ def main():
                     decomposition(
                         session_data.values,
                         eda_data[side][user][session].attrs["sampling frequency"],
-                        session,
-                        user,
-                        side,
                     )["phasic component"],
                     index=session_data.index,
                 )
@@ -176,21 +218,7 @@ def main():
         for side in eda_data_filtered.keys()
     }
 
-    # eda_data_phasic: defaultdict[str, dict[str, Series]] = {
-    #     side: {
-    #         user: {
-    #             session: Series(
-    #                 session_phasic["phasic component"],
-    #                 index=eda_data[side][user][session].index,
-    #             )
-    #             for session, session_phasic in zip(
-    #                 eda_data[side][user].keys(), eda_data_phasic[side][user]
-    #             )
-    #         }
-    #         for user in eda_data_phasic[side].keys()
-    #     }
-    #     for side in eda_data_filtered.keys()
-    # }
+
     print("Total phasic component calculation: %.2f s" % (time() - start))
     if plots:
         make_lineplot(
@@ -200,30 +228,9 @@ def main():
             title="Example EDA phasic component",
         )
 
-    eda_data_standardized: defaultdict[str, dict[str, Series]] = {
-        side: {
-            user: {
-                session: Series(
-                    standardize(session_data), index=eda_data[side][user][session].index
-                )
-                for session, session_data in user_edat_data.items()
-            }
-            for user, user_edat_data in eda_data_filtered[side].items()
-        }
-        for side in eda_data_filtered.keys()
-    }
-    eda_data_standardized_phasic: defaultdict[str, dict[str, dict[str, Series]]] = {
-        side: {
-            user: {
-                session: Series(
-                    standardize(session_data), index=eda_data[side][user][session].index
-                )
-                for session, session_data in user_edat_data.items()
-            }
-            for user, user_edat_data in eda_data_filtered[side].items()
-        }
-        for side in eda_data_phasic.keys()
-    }
+    eda_data_standardized = rescaling(data=eda_data_filtered, rescaling_method=standardize)
+    eda_data_standardized_phasic = rescaling(data=eda_data_phasic, rescaling_method=standardize)
+    
 
     if plots:
         make_lineplot(
@@ -240,38 +247,9 @@ def main():
         )
 
     if concat_sessions:
-        eda_data_standardized_phasic: defaultdict[str, dict[str, Series]] = {
-            side: {
-                user: concat(
-                    [
-                        prepare_data_for_concatenation(
-                            data=session_data, session_name=session
-                        )
-                        for session, session_data in user_edat_data.items()
-                    ],
-                    axis=0,
-                    join="outer",
-                ).sort_index()
-                for user, user_edat_data in eda_data_filtered[side].items()
-            }
-            for side in eda_data_standardized_phasic.keys()
-        }
-        eda_data_standardized: defaultdict[str, dict[str, Series]] = {
-            side: {
-                user: concat(
-                    [
-                        prepare_data_for_concatenation(
-                            data=session_data, session_name=session
-                        )
-                        for session, session_data in user_edat_data.items()
-                    ],
-                    axis=0,
-                    join="outer",
-                ).sort_index()
-                for user, user_edat_data in eda_data_filtered[side].items()
-            }
-            for side in eda_data_standardized.keys()
-        }
+        eda_data_standardized_phasic = concate_session_data(eda_data_standardized_phasic)
+        eda_data_standardized = concate_session_data(eda_data_standardized)
+
 
         # TODO: the code should be able to handle even when there is no session concatenation
         for side in eda_data_standardized.keys():
@@ -284,7 +262,9 @@ def main():
                         user_data_standardized: Series = eda_data_standardized[side][
                             user
                         ]
-                        user_data_phasic: Series = eda_data_standardized_phasic[side][user]
+                        user_data_phasic: Series = eda_data_standardized_phasic[side][
+                            user
+                        ]
                         df_to_save: DataFrame = concat(
                             [user_data_standardized, user_data_phasic], axis=1
                         )
