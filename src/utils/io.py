@@ -111,8 +111,10 @@ def load_nested_parquet_data(
 def load_and_process_csv_data(
     path_to_main_folder: str,
     side: str | None = None,
+    device: str = "E4",
     n_jobs: int = -1,
-    save_format: str = "parquet",
+    mode: int = 1,
+    data_type: str | None = None,
 ) -> DataFrame:
     """Load the data as given by Elena, i.e. in a tested structure of type
     ```
@@ -129,20 +131,29 @@ def load_and_process_csv_data(
         side to be extracted, if None both 'left' and 'right', by default None
     n_jobs : int, optional
         number of jobs to parallelize loading (see `joblib`), by default -1
-    save_format : str, optional
-        format to save data in, currently accepted 'csv' or 'parquet', by default 'parquet'
+    device: str, optional
+        device to be used, by default 'E4'. Accepted values are 'E4' and 'Oura'
+    mode: int, optional
+        mode to be used, by default 1. Accepted values are 1 and 2. If mode 1,
+        assume structure as USILaughs. If mode 2, assume structure as MWC2022.
+    data_type: str | None, optional
+        data type to be extracted, if None all data types, by default None
 
     Raises
     ------
     ValueError
-        if a `save_format` differnet from 'csv' or 'parquet' is given, an error is raised
+        if a `mode` different from 1 or 2 is provided, raise a ValueError
     """
 
     if side is None:
         logger.debug("No side provided. Assuming both sides")
         sides: list[str] = ["right", "left"]
-    else:
+    elif side == "right" or side == "left":
         sides: list[str] = [side]
+    else:
+        raise ValueError(
+            f"Side not recognized. Got {side} instead of 'right' or 'left' or None."
+        )
     del side  # NOTE: do not want to risk having stuff around not needed
 
     logger.info(f"Loading csv data from {path_to_main_folder}")
@@ -150,58 +161,84 @@ def load_and_process_csv_data(
         lambda: defaultdict(dict)
     )
     for chosen_side in sides:
-        test_all_paths_left: list[str] = glob(
-            f"{path_to_main_folder}/*/{chosen_side}/*.csv"
-        )
-        logger.debug(f"All files to be loaded: {test_all_paths_left}")
+        if mode == 1:
+            path_current_side_data: list[str] = glob(
+                f"{path_to_main_folder}/*/*_{chosen_side}/*.csv"
+            )
+        elif mode == 2:
+            path_current_side_data: list[str] = glob(
+                f"{path_to_main_folder}/*/*/{device}/{chosen_side}/*.csv"
+            )
+        else:
+            raise ValueError(f"Mode not recognized. Got {mode} instead of 1 or 2.")
+        logger.debug(f"All files to be loaded: {path_current_side_data}")
 
-        for path in tqdm(test_all_paths_left):
+        for path in tqdm(
+            path_current_side_data, desc=f"Loading csv data for side {chosen_side}"
+        ):
             if "tags" not in path and "IBI" not in path and "Table" not in path:
-                all_data_as_dict[chosen_side][path.split("/")[-3]][
-                    path.split("/")[-1].split(".")[0]
-                ] = read_csv(path, header=[0, 1])
+                if mode == 1:
+                    all_data_as_dict[chosen_side][path.split("/")[-3]][
+                        path.split("/")[-1].split(".")[0]
+                    ] = read_csv(path, header=[0, 1])
+                elif mode == 2:
+                    current_data_name: str = path.split("/")[-1].split(".")[0]
+                    if data_type in current_data_name:
+                        current_user_name: str = path.split("/")[-5]
+                        all_data_as_dict[chosen_side][current_user_name][
+                            current_data_name
+                        ] = read_csv(path, header=[0, 1])
+                    else:
+                        continue
             else:
                 continue
 
     del chosen_side
+    if mode == 2:
+        return all_data_as_dict
+    elif mode == 1:
 
-    def make_inner_concat(individual_name: str, inner_dict: dict, side: str):
-        return concat(
+        def make_inner_concat(individual_name: str, inner_dict: dict, side: str):
+            return concat(
+                [
+                    make_timestamp_idx(
+                        dataframe=dataframe.copy(),
+                        side=side,
+                        data_name=data_name,
+                        individual_name=individual_name,
+                    )
+                    for data_name, dataframe in inner_dict.items()
+                ],
+                axis=1,
+                join="outer",
+            ).sort_index()
+
+        logger.info("Starting indexing and concatenations")
+
+        df = concat(
             [
-                make_timestamp_idx(
-                    dataframe=dataframe.copy(),
-                    side=side,
-                    data_name=data_name,
-                    individual_name=individual_name,
-                )
-                for data_name, dataframe in inner_dict.items()
+                concat(
+                    Parallel(n_jobs=n_jobs)(
+                        delayed(make_inner_concat)(
+                            individual_name, inner_dict, chosen_side
+                        )
+                        for individual_name, inner_dict in all_data_as_dict[
+                            chosen_side
+                        ].items()
+                    ),
+                    axis=0,
+                    join="outer",
+                ).sort_index()
+                for chosen_side in all_data_as_dict.keys()
             ],
             axis=1,
             join="outer",
         ).sort_index()
-
-    logger.info("Starting indexing and concatenations")
-
-    df = concat(
-        [
-            concat(
-                Parallel(n_jobs=n_jobs)(
-                    delayed(make_inner_concat)(individual_name, inner_dict, chosen_side)
-                    for individual_name, inner_dict in all_data_as_dict[
-                        chosen_side
-                    ].items()
-                ),
-                axis=0,
-                join="outer",
-            ).sort_index()
-            for chosen_side in all_data_as_dict.keys()
-        ],
-        axis=1,
-        join="outer",
-    ).sort_index()
-    # TODO: I should probably change from the loading paradigm and the indexing part
-    # right above here, but I could not find an interesting way to do it
-    return df
+        # TODO: I should probably change from the loading paradigm and the indexing part
+        # right above here, but I could not find an interesting way to do it
+        return df
+    else:
+        raise ValueError(f"Mode not recognized. Got {mode} instead of 1 or 2.")
 
 
 def read_experimentinfo(path: str, user: str) -> DataFrame:

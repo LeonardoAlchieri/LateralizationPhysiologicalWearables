@@ -13,7 +13,7 @@ from src.utils.io import load_config, save_data
 
 _filename: str = basename(__file__).split(".")[0][4:]
 
-basicConfig(filename=f"logs/run/statistical_analysis/{_filename}.log", level=INFO)
+basicConfig(filename=f"logs/run/dataset_specific/sleep_lateralization/{_filename}.log", level=INFO)
 logger = getLogger(_filename)
 
 
