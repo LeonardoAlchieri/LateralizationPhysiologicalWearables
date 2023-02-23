@@ -24,7 +24,7 @@ from src.utils.filters import butter_lowpass_filter_filtfilt
 from src.utils.io import load_and_prepare_data, load_config
 from src.utils.plots import make_lineplot
 
-basicConfig(filename="run_eda_filtering.log", level=DEBUG)
+basicConfig(filename="logs/run/run_eda_filtering.log", level=DEBUG)
 
 logger = getLogger("main")
 
@@ -179,7 +179,7 @@ def main():
                 for session_name, session_data in user_edat_data.items()
             }
             for user, user_edat_data in tqdm(
-                eda_data[side].items(), desc=f'Filtering EDA data for side "{side}"'
+                eda_data[side].items(), desc=f'Filtering EDA data for side "{side}"', colour='green'
             )
         }
         for side in eda_data.keys()
@@ -207,12 +207,12 @@ def main():
                     index=session_data.index,
                 )
                 for session, session_data in tqdm(
-                    user_edat_data.items(), desc="Session progress"
+                    user_edat_data.items(), desc="Session progress", colour='blue'
                 )
             }
             for user, user_edat_data in tqdm(
                 eda_data_filtered[side].items(),
-                desc="EDA decomposition progress (user)",
+                desc="EDA decomposition progress (user)", colour='green'
             )
         }
         for side in eda_data_filtered.keys()
