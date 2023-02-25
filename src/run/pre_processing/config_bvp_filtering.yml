@@ -1,0 +1,10 @@
+path_to_main_folder: "/Users/leonardoalchieri/Datasets/MWC2022_Sleep/sleep_data"
+path_to_save_folder: "./data.nosync/filtered"
+cutoff_frequency: 5 # should not be changed, used like this by Elena
+butterworth_order: 1 # should not be changed, used like this by Elena
+plots: True
+clean_plots: True
+mode: 2
+device: "E4"
+concat_sessions: True
+subset_data: False

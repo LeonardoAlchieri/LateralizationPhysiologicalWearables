@@ -1,19 +1,29 @@
 # This script just takes the different csv files for the experiment info and puts them together
 from glob import glob
+from typing import Any
 from logging import DEBUG, INFO, basicConfig, getLogger
 from os.path import basename
 from os.path import join as join_paths
 from sys import path
+from warnings import warn
 
-from pandas import (DataFrame, Series, Timedelta, concat, isna, read_csv,
-                    to_datetime)
+from pandas import (
+    DataFrame,
+    Series,
+    Timedelta,
+    concat,
+    isna,
+    read_csv,
+    to_datetime,
+    Timestamp,
+)
 
 path.append(".")
 from src.utils.io import load_config, save_data
 
 _filename: str = basename(__file__).split(".")[0][4:]
 
-basicConfig(filename=f"logs/run/dataset_specific/sleep_lateralization/{_filename}.log", level=INFO)
+basicConfig(filename=f"logs/{_filename}.log", level=INFO)
 logger = getLogger(_filename)
 
 
@@ -22,6 +32,21 @@ logger = getLogger(_filename)
 # user actually went to bed. The actual bed time is the time the user
 # said they went to bed plus the latency. The latency is the amount of
 # time the user took to actually fall asleep.
+
+
+def check_latency_consistency(latency: Any) -> int:
+    if isinstance(latency, str):
+        try:
+            latency = float(latency)
+        except ValueError:
+            warn(f"Latency {latency} is not a number. Trying to split on -")
+            try:
+                latency = float(latency.split("-")[-1])
+            except Exception:
+                warn(f"Could not convert. Setting to 0")
+                latency = 0
+    # TODO: implement other checks
+    return latency
 
 
 def calculate_actual_bed_time(df_row: Series) -> Series:
@@ -38,7 +63,25 @@ def calculate_actual_bed_time(df_row: Series) -> Series:
     Series
         series for a single usersurvey with the actual bed time
     """
-    return df_row["bed_time"] + Timedelta(minutes=df_row["latency"])
+    if isna(df_row["bed_time"]):
+        warn("Row is NaN. Returning NaN")
+        return df_row
+
+    bed_time: Timestamp = df_row["bed_time"]
+    if isinstance(bed_time, str):
+        bed_time: Timestamp = to_datetime(bed_time)
+        current_date: Timestamp = to_datetime(df_row.name[-1]).date()
+        bed_time.replace(
+            year=current_date.year, month=current_date.month, day=current_date.day
+        )
+    correct_bed_time: Timestamp = bed_time + Timedelta(
+        minutes=check_latency_consistency(df_row["latency"])
+    )
+    if correct_bed_time.time() < to_datetime("12:00:00").time():
+        pass
+    else:
+        correct_bed_time += Timedelta(days=-1)
+    return correct_bed_time
 
 
 # This function converts the bed and wake-up times from strings to timestamps.
@@ -116,7 +159,7 @@ def main():
         calculate_actual_bed_time, axis=1
     )
 
-    all_experimentinfo_joined.dropna(axis=0, inplace=True, how='any')
+    all_experimentinfo_joined.dropna(axis=0, inplace=True, how="any")
     # TODO: add Oura Ring bedtime
     save_data(
         data_to_save=all_experimentinfo_joined,

@@ -1,6 +1,6 @@
 from pandas import DataFrame, Series, MultiIndex, concat
 from scipy.stats import pearsonr, spearmanr, kendalltau, wilcoxon
-from affect_size.cliff_delta import cliff_delta
+from effect_size_analysis.cliff_delta import cliff_delta
 from numpy import isnan, nan, sign
 
 
