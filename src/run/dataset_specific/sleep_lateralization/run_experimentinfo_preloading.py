@@ -159,7 +159,7 @@ def main():
         calculate_actual_bed_time, axis=1
     )
 
-    all_experimentinfo_joined.dropna(axis=0, inplace=True, how="any")
+    all_experimentinfo_joined.dropna(axis=0, inplace=True, how="any", subset=['bed_time', 'wake_up_time'])
     # TODO: add Oura Ring bedtime
     save_data(
         data_to_save=all_experimentinfo_joined,

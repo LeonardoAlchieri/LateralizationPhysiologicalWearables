@@ -343,12 +343,19 @@ def prepare_data_for_concatenation(data: Series, session_name: str) -> Series:
     # NOTE: session_names may contain the time as well, to which we are not interested.
     # The session name is the name of the day the user woke up. As such, we 
     # have to add a +1 day to the session name to get the correct date.
-    session_id_corrected: Timestamp = to_datetime(
+    
+    session_time: str = session_name.split("-")[1]
+    if session_time[0] == "0":
+        session_id_corrected: Timestamp = to_datetime(
         session_name.split("-")[0], format="%y%m%d"
-    ) + Timedelta("1D")
+        )
+    else:
+        session_id_corrected: Timestamp = to_datetime(
+        session_name.split("-")[0], format="%y%m%d"
+        ) + Timedelta("1D")
     session_id_corrected: str = str(session_id_corrected.date())
     tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
-        (session_name, index_timestamp) for index_timestamp in data.index
+        (session_id_corrected, index_timestamp) for index_timestamp in data.index
     ]
 
     data.index = MultiIndex.from_tuples(
