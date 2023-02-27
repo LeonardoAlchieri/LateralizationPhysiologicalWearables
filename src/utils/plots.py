@@ -12,10 +12,11 @@ from matplotlib.pyplot import (
     title as figtitle,
     legend as make_legend,
 )
-from matplotlib.axes._subplots import SubplotBase
+from matplotlib.axes import SubplotBase
 from matplotlib.pyplot import xticks, xlabel, ylabel, legend, cm, show, title
 from matplotlib.patches import Patch
 from seaborn import set, heatmap
+from pathlib import Path
 
 
 def bland_altman_plot(
@@ -115,7 +116,9 @@ def make_lineplot(
                 xlabel("Time")
                 ylabel(f"{which} value (mV)")
                 # TODO: imlement using path joining, and not string concatenation
-                savefig(f"./visualizations/{which}/{savename}.pdf")
+                path_to_save: str = f"./visualizations/{which}/"
+                Path(path_to_save).mkdir(parents=True, exist_ok=True)
+                savefig(join_paths(path_to_save, f"{savename}.pdf"))
             case _:
                 raise NotImplementedError(
                     f'Unknown plot type "{which}". Currently implemented: "EDA"'

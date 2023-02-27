@@ -1,43 +1,50 @@
-from sys import path
-from os import remove as remove_file
 from glob import glob
-from numpy import ndarray
-from pandas import (
-    IndexSlice,
-    MultiIndex,
-    Series,
-    concat,
-    read_parquet,
-)
-from time import time
+from os import remove as remove_file
+from os.path import join as join_paths
+from pathlib import Path
+# from joblib import Parallel, delayed
 from random import choice as choose_randomly
-from logging import basicConfig, getLogger, INFO, DEBUG
+from sys import path
+from time import time
+from warnings import warn
+
+from numpy import ndarray
+from pandas import DataFrame, Series, concat
+from tqdm import tqdm
 
 path.append(".")
-from src.utils.io import load_config, save_data
-from src.utils.filters import butter_lowpass_filter_filtfilt, apply_filtering
-from src.utils.eda import decomposition
-from src.utils.plots import make_lineplot
+from collections import defaultdict
+from logging import DEBUG, INFO, basicConfig, getLogger
 
-basicConfig(filename="logs/run_eda_filtering.log", level=DEBUG)
+from src.utils import make_timestamp_idx, prepare_data_for_concatenation
+from src.utils.eda import decomposition, standardize
+from src.utils.filters import butter_lowpass_filter_filtfilt
+from src.utils.io import load_and_prepare_data, load_config
+from src.utils.plots import make_lineplot
+from src.utils.pre_processing import concate_session_data, rescaling
+
+basicConfig(filename="logs/run/run_eda_filtering.log", level=DEBUG)
 
 logger = getLogger("main")
 
-
 def main():
-    path_to_config: str = "src/run/config_eda_filtering.yml"
+    path_to_config: str = "src/run/pre_processing/config_eda_filtering.yml"
 
     logger.info("Starting model training")
     configs = load_config(path=path_to_config)
     logger.debug("Configs loaded")
 
-    path_to_data: str = configs["path_to_data"]
+    path_to_main_folder: str = configs["path_to_main_folder"]
     path_to_save_folder: str = configs["path_to_save_folder"]
-    save_format: str = configs["save_format"]
     cutoff_frequency: float = configs["cutoff_frequency"]
     butterworth_order: int = configs["butterworth_order"]
+    n_jobs: int = configs["n_jobs"]
     plots: bool = configs["plots"]
     clean_plots: bool = configs["clean_plots"]
+    mode: int = configs["mode"]
+    device: str = configs["device"]
+    concat_sessions: bool = configs["concat_sessions"]
+    subset_data: bool = configs["subset_data"]
 
     if clean_plots:
         files_to_remove = glob("./visualizations/EDA/*.pdf")
@@ -45,120 +52,194 @@ def main():
             remove_file(f)
         del files_to_remove
 
-    all_data = read_parquet(path_to_data)
-    # NOTE: the data here is order this way: {side: {user: Series}}, where each pandas
-    # Series contains also the `attr` field with the metadata relative to the specific user
+    eda_data = load_and_prepare_data(
+        path_to_main_folder=path_to_main_folder,
+        side=None,
+        data_type="EDA",
+        mode=mode,
+        device=device,
+    )
 
-    eda_cols: list[tuple[str, str]] = [col for col in all_data.columns if "EDA" in col]
+    if subset_data:
+        warn("Subsetting data to 1000 samples per session.")
+        for side in eda_data.keys():
+            for user in eda_data[side].keys():
+                for session in eda_data[side][user].keys():
+                    eda_data[side][user][session] = eda_data[side][user][session][:1000]
+
+    eda_data = {
+        side: {
+            user: {
+                session: make_timestamp_idx(
+                    dataframe=session_data,
+                    data_name="EDA",
+                    individual_name=user,
+                    side=side,
+                )
+                for session, session_data in eda_data[side][user].items()
+            }
+            for user in eda_data[side].keys()
+        }
+        for side in eda_data.keys()
+    }
+    # NOTE: the data here is order this way: {side: {user: session: {Series}}},
+    # ir {side: {user: Series}}, depending on the chosen mode.
+    # Each pandas Series contains also the `attr` field with the
+    # metadata relative to the specific user <-- pretty sure I did
+    # not implement this at the end
+
     logger.info("Data loaded correctly.")
-    if plots:
-        random_side: str = choose_randomly(list(all_data.keys()))
-        random_user: str = choose_randomly(list(all_data[random_side].keys()))
-        logger.info(f"Making plots for side {random_side} and user {random_user}")
+    logger.info(f"Number of sides: {len(eda_data.keys())}")
+    logger.info(f"Number of users for right side: {len(eda_data['right'].keys())}")
+    logger.info(f"Number of users for left side: {len(eda_data['left'].keys())}")
 
     if plots:
+        random_side: str = choose_randomly(list(eda_data.keys()))
+        random_user: str = choose_randomly(list(eda_data[random_side].keys()))
+        random_session: str = choose_randomly(
+            list(eda_data[random_side][random_user].keys())
+        )
+        logger.info(f"Making plots for side {random_side} and user {random_user}")
         make_lineplot(
-            data=all_data.loc[IndexSlice[random_user, :], IndexSlice[random_side, :]],
+            data=eda_data[random_side][random_user][random_session],
             which="EDA",
-            savename=f"eda_{random_side[-1]}_{random_user[0]}",
+            savename=f"eda_{random_side}_{random_user}_{random_session}",
             title="Example EDA",
         )
 
-    eda_data_filtered = (
-        all_data[eda_cols]
-        .dropna(how="all")
-        .groupby(level=0, axis=0, group_keys=True)
-        .apply(
-            lambda user_data: (
-                user_data.groupby(level=0, axis=1, group_keys=True).apply(
-                    lambda user_data_side: apply_filtering(
-                        data=user_data_side,
-                        filter=butter_lowpass_filter_filtfilt,
-                        filter_args=dict(
-                            cutoff=cutoff_frequency, fs=4, order=butterworth_order
-                        ),
-                        col_appendix="filt",
-                    )
+    eda_data_filtered: defaultdict[str, dict[str, dict[str, Series]]] = {
+        side: {
+            user: {
+                session_name: Series(
+                    butter_lowpass_filter_filtfilt(
+                        data=session_data,
+                        cutoff=cutoff_frequency,
+                        fs=session_data.attrs["sampling frequency"],
+                        order=butterworth_order,
+                    ),
+                    index=session_data.index,
                 )
+                for session_name, session_data in user_edat_data.items()
+            }
+            for user, user_edat_data in tqdm(
+                eda_data[side].items(), desc=f'Filtering EDA data for side "{side}"', colour='green'
             )
-        )
-    )
+        }
+        for side in eda_data.keys()
+    }
 
     if plots:
         make_lineplot(
-            data=eda_data_filtered.loc[
-                IndexSlice[random_user, :], IndexSlice[random_side, :]
-            ],
+            data=eda_data_filtered[random_side][random_user][random_session],
             which="EDA",
-            savename=f"eda_filtered_{random_side[-1]}_{random_user[0]}",
+            savename=f"eda_filtered_{random_side}_{random_user}_{random_session}",
             title="Example EDA after filter",
         )
+
     start = time()
 
-    def get_phasic_component(data_clean: Series | ndarray, frequency: int):
-        return decomposition(data_clean, frequency=4)["phasic component"]
 
-    eda_data_phasic = (
-        eda_data_filtered.dropna(how="all")
-        .groupby(level=0, axis=0, group_keys=True)
-        .apply(
-            lambda user_data: (
-                user_data.groupby(level=0, axis=1, group_keys=True).apply(
-                    lambda x: apply_filtering(
-                        data=x,
-                        filter=get_phasic_component,
-                        filter_args=dict(frequency=4),
-                        col_appendix="phasic",
-                    )
+    eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
+        side: {
+            user: {
+                session: Series(
+                    decomposition(
+                        session_data.values,
+                        eda_data[side][user][session].attrs["sampling frequency"],
+                    )["phasic component"],
+                    index=session_data.index,
                 )
+                for session, session_data in tqdm(
+                    user_edat_data.items(), desc="Session progress", colour='blue'
+                )
+            }
+            for user, user_edat_data in tqdm(
+                eda_data_filtered[side].items(),
+                desc="EDA decomposition progress (user)", colour='green'
             )
-        )
-    )
+        }
+        for side in eda_data_filtered.keys()
+    }
+
 
     print("Total phasic component calculation: %.2f s" % (time() - start))
     if plots:
         make_lineplot(
-            data=eda_data_phasic.loc[
-                IndexSlice[random_user, :], IndexSlice[random_side, :]
-            ],
+            data=eda_data_phasic[random_side][random_user][random_session],
             which="EDA",
-            savename=f"eda_phasic_{random_side[-1]}_{random_user[0]}",
-            title="Example EDA filtered, phasic component",
+            savename=f"eda_phasic_{random_side}_{random_user}_{random_session}",
+            title="Example EDA phasic component",
         )
 
-    eda_data_standardized = (
-        eda_data_filtered.dropna()
-        .groupby(level=0, axis=0, group_keys=False)
-        .apply(lambda x: (x - x.mean()) / x.std())
-    )
-    eda_data_standardized.columns = MultiIndex.from_tuples(
-        [(col[0], f"{col[1]}_stand") for col in eda_data_standardized.columns]
-    )
+    eda_data_standardized = rescaling(data=eda_data_filtered, rescaling_method=standardize)
+    eda_data_standardized_phasic = rescaling(data=eda_data_phasic, rescaling_method=standardize)
+    
 
     if plots:
         make_lineplot(
-            data=eda_data_standardized.loc[
-                IndexSlice[random_user, :], IndexSlice[random_side, :]
-            ],
+            data=eda_data_standardized[random_side][random_user][random_session],
             which="EDA",
-            savename=f"eda_standardized_{random_side[-1]}_{random_user[0]}",
+            savename=f"eda_standardized_{random_side}_{random_user}_{random_session}",
             title="Example EDA filtered & standardized",
         )
+        make_lineplot(
+            data=eda_data_standardized_phasic[random_side][random_user][random_session],
+            which="EDA",
+            savename=f"eda_standardized_{random_side}_{random_user}_{random_session}",
+            title="Example EDA phasic standardized",
+        )
 
-    logger.info(
-        "Concatenating standardized and phasic components of EDA to all other data"
-    )
-    data_to_save = concat(
-        [all_data, eda_data_standardized, eda_data_phasic], join="outer", axis=1
-    ).sort_index()
+    if concat_sessions:
+        eda_data_standardized_phasic = concate_session_data(eda_data_standardized_phasic)
+        eda_data_standardized = concate_session_data(eda_data_standardized)
 
-    # NOTE: this allows to have the columns in order nicely
-    data_to_save = data_to_save.reindex(sorted(data_to_save.columns), axis=1)
-    save_data(
-        data_to_save=data_to_save,
-        filepath=f"{path_to_save_folder}/all_data_eda-filt",
-        save_format=save_format,
-    )
+
+        # TODO: the code should be able to handle even when there is no session concatenation
+        for side in eda_data_standardized.keys():
+            if side in eda_data_standardized_phasic.keys():
+                for user in tqdm(
+                    eda_data_standardized[side].keys(),
+                    desc=f'Saving EDA data for side "{side}"',
+                ):
+                    if user in eda_data_phasic[side].keys():
+                        user_data_standardized: Series = eda_data_standardized[side][
+                            user
+                        ]
+                        user_data_phasic: Series = eda_data_standardized_phasic[side][
+                            user
+                        ]
+                        df_to_save: DataFrame = concat(
+                            [user_data_standardized, user_data_phasic], axis=1
+                        )
+                        df_to_save.columns = ["mixed-EDA", "phasic-EDA"]
+                        # NOTE: I don't need the attributes, since I put all of the sessions together
+                        # df_to_save.attrs['sampling rate'] = eda_data[side][user].attrs
+                        # if plots and (side == random_side) and (user == random_user):
+                        #     df_to_save["EDA original"] = standardize(
+                        #         eda_data[random_side][random_user]
+                        #     )
+                        #     make_lineplot(
+                        #         data=df_to_save,
+                        #         which="EDA",
+                        #         savename=f"eda_filteredXphasic_{random_side}_{random_user}",
+                        #         title="Example EDA filtered, phasic & original (all standardized)",
+                        #     )
+                        path_to_save: str = f"{path_to_save_folder}/{side}/EDA/"
+                        filename: str = f"{user}.csv"
+
+                        Path(path_to_save).mkdir(parents=True, exist_ok=True)
+
+                        df_to_save.to_csv(
+                            join_paths(path_to_save, filename),
+                        )
+                    else:
+                        raise RuntimeError(
+                            f"User {user} not found in eda_data_phasic for side {side}: {eda_data_phasic[side].keys()}"
+                        )
+            else:
+                raise RuntimeError(
+                    f"Side {side} not found in eda_data_phasic keys: {eda_data_phasic.keys()}"
+                )
 
 
 if __name__ == "__main__":

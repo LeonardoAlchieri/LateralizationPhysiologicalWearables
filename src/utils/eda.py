@@ -1,8 +1,9 @@
-from numpy import array, ndarray
+from numpy import ndarray
 from pandas import Series
 from cvxEDA import cvxEDA
 
 from src.utils import blockPrinting
+from src.utils.pre_processing import standardize
 
 # See https://github.com/lciti/cvxEDA for more EDA analysis methdos
 
@@ -30,22 +31,3 @@ def decomposition(
     # TODO: see if the standardization is actually something we want!
     yn = standardize(eda_signal=eda_signal)
     return cvxEDA(yn, 1.0 / frequency)
-
-
-# TODO: probably remove and use some third party library
-def standardize(eda_signal: Series | ndarray | list) -> ndarray:
-    """Simple method to standardize an EDA signal.
-
-    Parameters
-    ----------
-    eda_signal : Series | ndarray | list
-        eda signal to standardize
-
-    Returns
-    -------
-    ndarray
-        returns an array standardized
-    """
-    y: ndarray = array((eda_signal))
-    yn: ndarray = (y - y.mean()) / y.std()
-    return yn
