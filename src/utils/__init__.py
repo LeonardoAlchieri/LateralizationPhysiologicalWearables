@@ -17,6 +17,7 @@ from pandas import (
     date_range,
     to_datetime,
     Series,
+    Timedelta,
 )
 
 logger = getLogger("utils")
@@ -41,6 +42,7 @@ SESSIONS_GROUPINGS: dict[str, list[str]] = {
 }
 
 INTENSITIES_MAPPING: dict[str, float] = {"low": 0, "medium": 1, "high": 2}
+
 
 # decorater used to block function printing to the console
 def blockPrinting(func):
@@ -337,6 +339,14 @@ def get_cliff_bin(
 
 
 def prepare_data_for_concatenation(data: Series, session_name: str) -> Series:
+    
+    # NOTE: session_names may contain the time as well, to which we are not interested.
+    # The session name is the name of the day the user woke up. As such, we 
+    # have to add a +1 day to the session name to get the correct date.
+    session_id_corrected: Timestamp = to_datetime(
+        session_name.split("-")[0], format="%y%m%d"
+    ) + Timedelta("1D")
+    session_id_corrected: str = str(session_id_corrected.date())
     tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
         (session_name, index_timestamp) for index_timestamp in data.index
     ]
