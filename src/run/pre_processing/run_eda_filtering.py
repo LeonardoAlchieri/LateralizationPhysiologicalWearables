@@ -23,7 +23,7 @@ from src.utils.io import load_and_prepare_data, load_config
 from src.utils.plots import make_lineplot
 from src.utils.pre_processing import concate_session_data, rescaling
 
-basicConfig(filename="logs/run/run_eda_filtering.log", level=DEBUG)
+basicConfig(filename="logs/run_eda_filtering.log", level=DEBUG)
 
 logger = getLogger("main")
 
@@ -225,11 +225,11 @@ def main():
                         #         title="Example EDA filtered, phasic & original (all standardized)",
                         #     )
                         path_to_save: str = f"{path_to_save_folder}/{side}/EDA/"
-                        filename: str = f"{user}.csv"
+                        filename: str = f"{user}.parquet"
 
                         Path(path_to_save).mkdir(parents=True, exist_ok=True)
 
-                        df_to_save.to_csv(
+                        df_to_save.to_parquet(
                             join_paths(path_to_save, filename),
                         )
                     else:
