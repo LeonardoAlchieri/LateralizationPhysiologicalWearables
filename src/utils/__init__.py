@@ -338,22 +338,28 @@ def get_cliff_bin(
             raise ValueError(f"{x} is not in the dull range")
 
 
-def prepare_data_for_concatenation(data: Series, session_name: str) -> Series:
+def prepare_data_for_concatenation(data: Series, session_name: str, mode: int = 1) -> Series:
     
     # NOTE: session_names may contain the time as well, to which we are not interested.
     # The session name is the name of the day the user woke up. As such, we 
     # have to add a +1 day to the session name to get the correct date.
-    
-    session_time: str = session_name.split("-")[1]
-    if session_time[0] == "0":
-        session_id_corrected: Timestamp = to_datetime(
-        session_name.split("-")[0], format="%y%m%d"
-        )
+
+    if mode == 1:
+        session_id_corrected = session_name 
+    elif mode == 2:
+        session_time: str = session_name.split("-")[1]
+        if session_time[0] == "0":
+            session_id_corrected: Timestamp = to_datetime(
+            session_name.split("-")[0], format="%y%m%d"
+            )
+        else:
+            session_id_corrected: Timestamp = to_datetime(
+            session_name.split("-")[0], format="%y%m%d"
+            ) + Timedelta("1D")
+        session_id_corrected: str = str(session_id_corrected.date())    
     else:
-        session_id_corrected: Timestamp = to_datetime(
-        session_name.split("-")[0], format="%y%m%d"
-        ) + Timedelta("1D")
-    session_id_corrected: str = str(session_id_corrected.date())
+        raise ValueError(f"Mode not supported. Please use 1 or 2. Received {mode}")
+    
     tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
         (session_id_corrected, index_timestamp) for index_timestamp in data.index
     ]

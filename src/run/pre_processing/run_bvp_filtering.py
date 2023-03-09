@@ -54,6 +54,7 @@ def main():
             remove_file(f)
         del files_to_remove
 
+
     bvp_data = load_and_prepare_data(
         path_to_main_folder=path_to_main_folder,
         side=None,

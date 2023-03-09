@@ -160,7 +160,7 @@ def load_and_prepare_data(
         logger.info(f"Loading for side {chosen_side}")
         if mode == 1:
             path_current_side_data: list[str] = glob(
-                f"{path_to_main_folder}/*/*_{chosen_side}/{data_type}_*.csv"
+                f"{path_to_main_folder}/*/{chosen_side}/{data_type}.csv"
             )
         elif mode == 2:
             path_current_side_data: list[str] = glob(
@@ -185,7 +185,9 @@ def load_and_prepare_data(
                 # NOTE: if only one column is present, return as Series, otherwise as DataFrame
                 if mode == 1:
                     current_data_name: str = path.split("/")[-1].split(".")[0]
-                    current_user_name: str = path.split("/")[-2]
+                    current_user_name: str = path.split("/")[-3]
+                    # FIXME: in mode 1, there is no session, since only one experiment was carried out
+                    current_session_name: str = "experiment"
                 elif mode == 2:
                     current_data_name: str = (
                         path.split("/")[-1].split(".")[0].split("_")[0]

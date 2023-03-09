@@ -34,7 +34,7 @@ def concate_session_data(
                 axis=0,
                 join="outer",
             ).sort_index()
-            for user in tqdm(data_dict[side].keys(), desc='Concatenating user data', colour='green')
+            for user in tqdm(data_dict[side].keys(), desc=f'Concatenating user data for side {side}', colour='green')
         }
         for side in data_dict.keys()
     }
