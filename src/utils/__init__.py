@@ -368,3 +368,22 @@ def prepare_data_for_concatenation(data: Series, session_name: str, mode: int = 
         tuples_for_multiindex, names=["session", "timestamp"]
     )
     return data
+
+
+def segment_over_experiment_time(
+    data_dict: dict[str, dict[str, Series]], experiment_time: DataFrame
+) -> dict[str, dict[str, Series]]:
+    return {
+        side: {
+            subject: subject_data.loc[
+                IndexSlice[
+                    :,
+                    experiment_time.loc[subject, "start"] : experiment_time.loc[
+                        subject, "end"
+                    ],
+                ]
+            ]
+            for subject, subject_data in side_data.items()
+        }
+        for side, side_data in data_dict.items()
+    }
