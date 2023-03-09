@@ -1,0 +1,4 @@
+segment_size_in_mins: 10
+plot_data_distribution: False
+data_type: "EDA"
+data_sample_rate: 4 #TODO: make the sample rate depend on the data type

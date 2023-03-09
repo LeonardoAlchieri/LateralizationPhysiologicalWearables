@@ -221,7 +221,7 @@ def load_and_prepare_data(
     return all_data_as_dict
 
 
-def read_experimentinfo(path: str, user: str) -> DataFrame:
+def read_experimentinfo(path: str, user: str, mode: int = 1) -> DataFrame:
     """Simple method to read the experiment info file for a given user.
 
     Parameters
@@ -230,6 +230,9 @@ def read_experimentinfo(path: str, user: str) -> DataFrame:
         path to the csv file, usually of the type <user>/experiment_info.csv
     user : str
         user name, e.g. s099
+    mode : int, optional
+        mode for the loading, by default 1. If 1, it will be assumed the 
+        structure from USILaughs, otherwise from MWC2022.
 
     Returns
     -------
