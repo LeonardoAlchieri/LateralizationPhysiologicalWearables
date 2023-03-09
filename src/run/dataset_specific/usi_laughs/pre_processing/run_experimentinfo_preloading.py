@@ -15,7 +15,7 @@ logger = getLogger("main")
 
 
 def main():
-    path_to_config: str = "src/run/config_experimentinfo_preloading.yml"
+    path_to_config: str = "src/run/dataset_specific/usi_laughs/pre_processing/config_experimentinfo_preloading.yml"
 
     logger.info("Starting model training")
     configs = load_config(path=path_to_config)
@@ -30,7 +30,7 @@ def main():
     logger.info("Loading and joining experiment info")
     all_experimentinfo_joined: DataFrame = concat(
         [
-            read_experimentinfo(path=path, user=path.split("/")[4])
+            read_experimentinfo(path=path, user=path.split("/")[-2])
             for path in all_experimentinfo_paths
         ],
         axis=0,
