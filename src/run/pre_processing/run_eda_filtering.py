@@ -1,3 +1,4 @@
+from typing import Any
 from glob import glob
 from os import remove as remove_file
 from os.path import join as join_paths
@@ -20,6 +21,7 @@ from logging import DEBUG, INFO, basicConfig, getLogger
 from src.utils import (
     make_timestamp_idx,
     segment_over_experiment_time,
+    remove_empty_sessions
 )
 from src.utils.eda import decomposition, standardize
 from src.utils.filters import butter_lowpass_filter_filtfilt
@@ -36,12 +38,12 @@ def main():
     path_to_config: str = "src/run/pre_processing/config_eda_filtering.yml"
 
     logger.info("Starting model training")
-    configs = load_config(path=path_to_config)
+    configs: dict[str, Any] = load_config(path=path_to_config)
     logger.debug("Configs loaded")
 
     path_to_main_folder: str = configs["path_to_main_folder"]
     path_to_save_folder: str = configs["path_to_save_folder"]
-    path_to_experiment_time: str = configs["path_to_experiment_time"]
+    path_to_experiment_time: str | None = configs.get("path_to_experiment_time", None)
     cutoff_frequency: float = configs["cutoff_frequency"]
     butterworth_order: int = configs["butterworth_order"]
     n_jobs: int = configs["n_jobs"]
@@ -58,8 +60,15 @@ def main():
             remove_file(f)
         del files_to_remove
 
-    # TODO: add check for other file formats
-    experiment_time = read_csv(path_to_experiment_time, index_col=0)
+    experiment_time: DataFrame | None
+    if path_to_experiment_time is None:
+        logger.warning(
+            f'No path to experiment time provided. Not applying filter "segment_over_experiment_time".'
+        )
+        experiment_time = None
+    else:
+        # TODO: add check for other file formats
+        experiment_time = read_csv(path_to_experiment_time, index_col=0)
 
     eda_data = load_and_prepare_data(
         path_to_main_folder=path_to_main_folder,
@@ -68,6 +77,7 @@ def main():
         mode=mode,
         device=device,
     )
+    
 
     if subset_data:
         warn("Subsetting data to 1000 samples per session.")
@@ -91,6 +101,11 @@ def main():
         }
         for side in eda_data.keys()
     }
+    # NOTE: segmentation over the experiment time has to happen after the
+    # timestamp is made as index, since it is required for the segmentation
+    eda_data = segment_over_experiment_time(eda_data, experiment_time)
+    eda_data = remove_empty_sessions(eda_data)
+    
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
     # Each pandas Series contains also the `attr` field with the
@@ -206,14 +221,8 @@ def main():
         eda_data_standardized_phasic = concate_session_data(
             eda_data_standardized_phasic
         )
-        eda_data_standardized_phasic = segment_over_experiment_time(
-            eda_data_standardized_phasic, experiment_time
-        )
 
         eda_data_standardized = concate_session_data(eda_data_standardized)
-        eda_data_standardized = segment_over_experiment_time(
-            eda_data_standardized, experiment_time
-        )
 
         # TODO: the code should be able to handle even when there is no session concatenation
         for side in eda_data_standardized.keys():

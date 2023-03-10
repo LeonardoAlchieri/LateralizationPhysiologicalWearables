@@ -85,6 +85,9 @@ def main():
         }
         for side in bvp_data.keys()
     }
+    # NOTE: segmentation over the experiment time has to happen after the
+    # timestamp is made as index, since it is required for the segmentation
+    bvp_data = segment_over_experiment_time(bvp_data, experiment_time)
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
     # Each pandas Series contains also the `attr` field with the
@@ -156,9 +159,6 @@ def main():
     if concat_sessions:
         start = time()
         bvp_data_standardized = concate_session_data(bvp_data_standardized)
-        bvp_data_standardized = segment_over_experiment_time(
-            bvp_data_standardized, experiment_time
-        )
 
         logger.info("Concatenating session data took %.2fs" % (time() - start))
 
