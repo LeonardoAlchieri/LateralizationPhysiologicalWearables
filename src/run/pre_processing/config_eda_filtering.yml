@@ -1,11 +1,12 @@
-path_to_main_folder: "/Users/leonardoalchieri/Datasets/MWC2022_Sleep/sleep_data"
-path_to_save_folder: "./data.nosync/filtered"
+path_to_main_folder: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
+path_to_save_folder: "./data.nosync/usilaughs/filtered"
+path_to_experiment_time: "./data.nosync/usilaughs/experiment_time.csv"
 cutoff_frequency: 0.4 # should not be changed, used like this by Elena
 butterworth_order: 1 # should not be changed, used like this by Elena
 n_jobs: 1 # -1 for "all cores"
 plots: True
 clean_plots: True
-mode: 2
+mode: 1
 device: "E4"
 concat_sessions: True
 subset_data: False

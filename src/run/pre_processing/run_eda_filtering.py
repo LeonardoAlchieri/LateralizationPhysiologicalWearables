@@ -1,7 +1,9 @@
+from typing import Any
 from glob import glob
 from os import remove as remove_file
 from os.path import join as join_paths
 from pathlib import Path
+
 # from joblib import Parallel, delayed
 from random import choice as choose_randomly
 from sys import path
@@ -9,14 +11,18 @@ from time import time
 from warnings import warn
 
 from numpy import ndarray
-from pandas import DataFrame, Series, concat
+from pandas import DataFrame, Series, concat, read_csv, IndexSlice
 from tqdm import tqdm
 
 path.append(".")
 from collections import defaultdict
 from logging import DEBUG, INFO, basicConfig, getLogger
 
-from src.utils import make_timestamp_idx, prepare_data_for_concatenation
+from src.utils import (
+    make_timestamp_idx,
+    segment_over_experiment_time,
+    remove_empty_sessions
+)
 from src.utils.eda import decomposition, standardize
 from src.utils.filters import butter_lowpass_filter_filtfilt
 from src.utils.io import load_and_prepare_data, load_config
@@ -27,15 +33,17 @@ basicConfig(filename="logs/run_eda_filtering.log", level=DEBUG)
 
 logger = getLogger("main")
 
+
 def main():
     path_to_config: str = "src/run/pre_processing/config_eda_filtering.yml"
 
     logger.info("Starting model training")
-    configs = load_config(path=path_to_config)
+    configs: dict[str, Any] = load_config(path=path_to_config)
     logger.debug("Configs loaded")
 
     path_to_main_folder: str = configs["path_to_main_folder"]
     path_to_save_folder: str = configs["path_to_save_folder"]
+    path_to_experiment_time: str | None = configs.get("path_to_experiment_time", None)
     cutoff_frequency: float = configs["cutoff_frequency"]
     butterworth_order: int = configs["butterworth_order"]
     n_jobs: int = configs["n_jobs"]
@@ -52,6 +60,16 @@ def main():
             remove_file(f)
         del files_to_remove
 
+    experiment_time: DataFrame | None
+    if path_to_experiment_time is None:
+        logger.warning(
+            f'No path to experiment time provided. Not applying filter "segment_over_experiment_time".'
+        )
+        experiment_time = None
+    else:
+        # TODO: add check for other file formats
+        experiment_time = read_csv(path_to_experiment_time, index_col=0)
+
     eda_data = load_and_prepare_data(
         path_to_main_folder=path_to_main_folder,
         side=None,
@@ -59,6 +77,7 @@ def main():
         mode=mode,
         device=device,
     )
+    
 
     if subset_data:
         warn("Subsetting data to 1000 samples per session.")
@@ -82,6 +101,11 @@ def main():
         }
         for side in eda_data.keys()
     }
+    # NOTE: segmentation over the experiment time has to happen after the
+    # timestamp is made as index, since it is required for the segmentation
+    eda_data = segment_over_experiment_time(eda_data, experiment_time)
+    eda_data = remove_empty_sessions(eda_data)
+    
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
     # Each pandas Series contains also the `attr` field with the
@@ -122,7 +146,9 @@ def main():
                 for session_name, session_data in user_edat_data.items()
             }
             for user, user_edat_data in tqdm(
-                eda_data[side].items(), desc=f'Filtering EDA data for side "{side}"', colour='green'
+                eda_data[side].items(),
+                desc=f'Filtering EDA data for side "{side}"',
+                colour="green",
             )
         }
         for side in eda_data.keys()
@@ -138,7 +164,6 @@ def main():
 
     start = time()
 
-
     eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
         side: {
             user: {
@@ -150,17 +175,17 @@ def main():
                     index=session_data.index,
                 )
                 for session, session_data in tqdm(
-                    user_edat_data.items(), desc="Session progress", colour='blue'
+                    user_edat_data.items(), desc="Session progress", colour="blue"
                 )
             }
             for user, user_edat_data in tqdm(
                 eda_data_filtered[side].items(),
-                desc="EDA decomposition progress (user)", colour='green'
+                desc="EDA decomposition progress (user)",
+                colour="green",
             )
         }
         for side in eda_data_filtered.keys()
     }
-
 
     print("Total phasic component calculation: %.2f s" % (time() - start))
     if plots:
@@ -171,9 +196,12 @@ def main():
             title="Example EDA phasic component",
         )
 
-    eda_data_standardized = rescaling(data=eda_data_filtered, rescaling_method=standardize)
-    eda_data_standardized_phasic = rescaling(data=eda_data_phasic, rescaling_method=standardize)
-    
+    eda_data_standardized = rescaling(
+        data=eda_data_filtered, rescaling_method=standardize
+    )
+    eda_data_standardized_phasic = rescaling(
+        data=eda_data_phasic, rescaling_method=standardize
+    )
 
     if plots:
         make_lineplot(
@@ -190,9 +218,11 @@ def main():
         )
 
     if concat_sessions:
-        eda_data_standardized_phasic = concate_session_data(eda_data_standardized_phasic)
-        eda_data_standardized = concate_session_data(eda_data_standardized)
+        eda_data_standardized_phasic = concate_session_data(
+            eda_data_standardized_phasic
+        )
 
+        eda_data_standardized = concate_session_data(eda_data_standardized)
 
         # TODO: the code should be able to handle even when there is no session concatenation
         for side in eda_data_standardized.keys():

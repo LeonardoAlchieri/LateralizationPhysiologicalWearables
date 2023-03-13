@@ -2,7 +2,6 @@ from glob import glob
 from os import remove as remove_file
 from os.path import join as join_paths
 from pathlib import Path
-from typing import Callable
 
 # from joblib import Parallel, delayed
 from random import choice as choose_randomly
@@ -10,15 +9,14 @@ from sys import path
 from time import time
 from warnings import warn
 
-from numpy import ndarray
-from pandas import DataFrame, Series, concat
+from pandas import DataFrame, Series, read_csv
 from tqdm import tqdm
 
 path.append(".")
 from collections import defaultdict
 from logging import DEBUG, INFO, basicConfig, getLogger
 
-from src.utils import make_timestamp_idx
+from src.utils import make_timestamp_idx, segment_over_experiment_time
 from src.utils.pre_processing import concate_session_data, rescaling
 from src.utils.pre_processing import standardize
 from src.utils.filters import butter_lowpass_filter_lfilter
@@ -47,12 +45,15 @@ def main():
     device: str = configs["device"]
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
+    path_to_experiment_time: str = configs["path_to_experiment_time"]
 
     if clean_plots:
         files_to_remove = glob("./visualizations/BVP/*.pdf")
         for f in files_to_remove:
             remove_file(f)
         del files_to_remove
+
+    experiment_time = read_csv(path_to_experiment_time, index_col=0)
 
     bvp_data = load_and_prepare_data(
         path_to_main_folder=path_to_main_folder,
@@ -84,6 +85,9 @@ def main():
         }
         for side in bvp_data.keys()
     }
+    # NOTE: segmentation over the experiment time has to happen after the
+    # timestamp is made as index, since it is required for the segmentation
+    bvp_data = segment_over_experiment_time(bvp_data, experiment_time)
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
     # Each pandas Series contains also the `attr` field with the
@@ -155,11 +159,11 @@ def main():
     if concat_sessions:
         start = time()
         bvp_data_standardized = concate_session_data(bvp_data_standardized)
-        
-        logger.info('Concatenating session data took %.2fs' % (time() - start))
-        
-        logger.info('Finished concatenating session data')
-        
+
+        logger.info("Concatenating session data took %.2fs" % (time() - start))
+
+        logger.info("Finished concatenating session data")
+
         # TODO: the code should be able to handle even when there is no session concatenation
         for side in bvp_data_standardized.keys():
             for user in tqdm(
@@ -180,7 +184,9 @@ def main():
                     join_paths(path_to_save, filename),
                 )
     else:
-        NotImplementedError("The code does not handle the case when there is no session concatenation yet.")
+        NotImplementedError(
+            "The code does not handle the case when there is no session concatenation yet."
+        )
 
 
 if __name__ == "__main__":

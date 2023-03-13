@@ -338,22 +338,29 @@ def get_cliff_bin(
             raise ValueError(f"{x} is not in the dull range")
 
 
-def prepare_data_for_concatenation(data: Series, session_name: str) -> Series:
-    
+def prepare_data_for_concatenation(
+    data: Series, session_name: str, mode: int = 1
+) -> Series:
     # NOTE: session_names may contain the time as well, to which we are not interested.
-    # The session name is the name of the day the user woke up. As such, we 
+    # The session name is the name of the day the user woke up. As such, we
     # have to add a +1 day to the session name to get the correct date.
-    
-    session_time: str = session_name.split("-")[1]
-    if session_time[0] == "0":
-        session_id_corrected: Timestamp = to_datetime(
-        session_name.split("-")[0], format="%y%m%d"
-        )
+
+    if mode == 1:
+        session_id_corrected = session_name
+    elif mode == 2:
+        session_time: str = session_name.split("-")[1]
+        if session_time[0] == "0":
+            session_id_corrected: Timestamp = to_datetime(
+                session_name.split("-")[0], format="%y%m%d"
+            )
+        else:
+            session_id_corrected: Timestamp = to_datetime(
+                session_name.split("-")[0], format="%y%m%d"
+            ) + Timedelta("1D")
+        session_id_corrected: str = str(session_id_corrected.date())
     else:
-        session_id_corrected: Timestamp = to_datetime(
-        session_name.split("-")[0], format="%y%m%d"
-        ) + Timedelta("1D")
-    session_id_corrected: str = str(session_id_corrected.date())
+        raise ValueError(f"Mode not supported. Please use 1 or 2. Received {mode}")
+
     tuples_for_multiindex: list[tuple[str, DatetimeIndex]] = [
         (session_id_corrected, index_timestamp) for index_timestamp in data.index
     ]
@@ -362,3 +369,82 @@ def prepare_data_for_concatenation(data: Series, session_name: str) -> Series:
         tuples_for_multiindex, names=["session", "timestamp"]
     )
     return data
+
+
+def segment_over_experiment_time(
+    data_dict: dict[str, dict[str, dict[str, Series]]], experiment_time: DataFrame
+) -> dict[str, dict[str, dict[str, Series]]]:
+    """This method segments the data over the experiment time. This should
+    be done before running any standardization or normalization, since it
+    would help to avoid large artefacts.
+
+    Parameters
+    ----------
+    data_dict : dict[str, dict[str, Series]]
+        dictionary containing the data to segment
+    experiment_time : DataFrame
+        dataframe with users as rows, and two columns, called "start" and
+        "end", respectively containing the start and end time of the experiment
+
+    Returns
+    -------
+    dict[str, dict[str, Series]]
+        returns the same structure of the input, but with the data segmented
+    """
+
+    def auxiliary_selecting_start_end(
+        data: Series,
+        user_id: str,
+        session_id: str,
+        n_levels_idx: int,
+        selection: str = "start",
+    ) -> Series:
+        if n_levels_idx == 1:
+            return data.loc[user_id, selection]
+        elif n_levels_idx == 2:
+            return data.loc[IndexSlice[user_id, session_id], selection]
+        else:
+            raise ValueError(f"n_levels_idx not supported: {n_levels_idx}")
+
+    n_levels_idx = experiment_time.index.nlevels
+
+    return {
+        side: {
+            user: {
+                session: user_data.loc[
+                    auxiliary_selecting_start_end(
+                        experiment_time, user, session, n_levels_idx, "start"
+                    ) : auxiliary_selecting_start_end(
+                        experiment_time, user, session, n_levels_idx, "end"
+                    )
+                ]
+                for session, user_data in user_data.items()
+            }
+            for user, user_data in side_data.items()
+        }
+        for side, side_data in data_dict.items()
+    }
+
+def remove_empty_sessions(data_dict: dict[str, dict[str, dict[str, Series]]]):
+    # NOTE: first remove the sessions, then remove the users who do not have any sessions
+    
+    data_dict_sessions_removed = {
+        side: {
+            user: {
+                session: user_data
+                for session, user_data in user_data.items() if not user_data.empty
+            }
+            for user, user_data in side_data.items()
+        }
+        for side, side_data in data_dict.items()
+    }
+    return {
+        side: {
+            user: {
+                session: user_data
+                for session, user_data in user_data.items()
+            }
+            for user, user_data in side_data.items() if len(side_data) > 0
+        }
+        for side, side_data in data_dict_sessions_removed.items()
+    }
