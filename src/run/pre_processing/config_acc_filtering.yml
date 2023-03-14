@@ -1,10 +1,11 @@
-path_to_main_folder: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
-path_to_save_folder: "./data.nosync/usilaughs/filtered"
-path_to_experiment_time: "./data.nosync/usilaughs/experiment_time.csv"
+path_to_main_folder: "/Users/leonardoalchieri/Datasets/MWC2022_Sleep/sleep_data"
+path_to_save_folder: "./data.nosync/mwc2022/filtered"
+# path_to_experiment_time: "./data.nosync/mwc2022/experiment_time.csv"
 window_size: 32 # the window size (for the moving avg) is 1sec, i.e. 32 samples, since the frequency of the ACC is 32Hz
-plots: True
-clean_plots: True
-mode: 1
+plots: False
+clean_plots: False
+mode: 2
+n_jobs: 8
 device: "E4"
 concat_sessions: True
 subset_data: False

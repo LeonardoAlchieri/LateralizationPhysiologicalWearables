@@ -9,6 +9,7 @@ from sys import path
 from time import time
 from warnings import warn
 
+from joblib import Parallel, delayed
 from pandas import DataFrame, Series, read_csv
 from tqdm import tqdm
 
@@ -17,15 +18,87 @@ from collections import defaultdict
 from logging import DEBUG, INFO, basicConfig, getLogger
 
 from src.utils import make_timestamp_idx, segment_over_experiment_time
-from src.utils.pre_processing import concate_session_data, rescaling
-from src.utils.pre_processing import standardize
 from src.utils.filters import moving_avg_acc
 from src.utils.io import load_and_prepare_data, load_config
 from src.utils.plots import make_lineplot
+from src.utils.pre_processing import concate_session_data, rescaling, standardize
 
 basicConfig(filename="logs/run_acc_filtering.log", level=DEBUG)
 
 logger = getLogger("main")
+
+
+def apply_moving_avg_filtering(
+    acc_data: defaultdict[str, dict[str, dict[str, Series]]],
+    window_size: int,
+    n_jobs: int = 1,
+) -> dict[str, dict[str, dict[str, Series]]]:
+    if n_jobs == 1:
+        results = {
+            side: {
+                user: {
+                    session_name: Series(
+                        moving_avg_acc(
+                            data=session_data,
+                            window_size=window_size,
+                        ),
+                        index=session_data.index,
+                    )
+                    for session_name, session_data in user_acct_data.items()
+                }
+                for user, user_acct_data in tqdm(
+                    acc_data[side].items(),
+                    desc=f'Filtering ACC data for side "{side}"',
+                    colour="green",
+                )
+            }
+            for side in acc_data.keys()
+        }
+    elif n_jobs > 1 or n_jobs == -1:
+
+        def support_moving_avg_acc(
+            session_data: DataFrame, session_name: str
+        ) -> tuple[str, Series]:
+            return (
+                session_name,
+                Series(
+                    moving_avg_acc(
+                        data=session_data,
+                        window_size=window_size,
+                    ),
+                    index=session_data.index,
+                ),
+            )
+
+        results = {
+            side: {
+                user: Parallel(n_jobs=n_jobs)(
+                    delayed(support_moving_avg_acc)(session_data, session_name)
+                    for session_name, session_data in user_acct_data.items()
+                )
+                for user, user_acct_data in tqdm(
+                    acc_data[side].items(),
+                    desc=f'Filtering ACC data for side "{side}"',
+                    colour="green",
+                )
+            }
+            for side in acc_data.keys()
+        }
+
+        results = {
+            side: {
+                user: {
+                    session_name: session_data
+                    for (session_name, session_data) in user_acct_data
+                }
+                for user, user_acct_data in results[side].items()
+            }
+            for side in results.keys()
+        }
+    else:
+        raise ValueError(f'Invalid value for "n_jobs": got {n_jobs}')
+
+    return results
 
 
 def main():
@@ -44,7 +117,8 @@ def main():
     device: str = configs["device"]
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
-    path_to_experiment_time: str = configs["path_to_experiment_time"]
+    n_jobs: int = configs.get("n_jobs", 1)
+    path_to_experiment_time: str | None = configs.get("path_to_experiment_time", None)
 
     if clean_plots:
         files_to_remove = glob("./visualizations/ACC/*.pdf")
@@ -52,8 +126,10 @@ def main():
             remove_file(f)
         del files_to_remove
 
-    experiment_time = read_csv(path_to_experiment_time, index_col=0)
-
+    if path_to_experiment_time is not None:
+        experiment_time = read_csv(path_to_experiment_time, index_col=0)
+    else:
+        experiment_time = None
 
     acc_data = load_and_prepare_data(
         path_to_main_folder=path_to_main_folder,
@@ -87,7 +163,10 @@ def main():
     }
     # NOTE: segmentation over the experiment time has to happen after the
     # timestamp is made as index, since it is required for the segmentation
-    acc_data = segment_over_experiment_time(acc_data, experiment_time)
+    if experiment_time is not None:
+        acc_data = segment_over_experiment_time(acc_data, experiment_time)
+    else:
+        logger.info(f"No experiment time file provided, skipping segmentation.")
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
     # Each pandas Series contains also the `attr` field with the
@@ -113,26 +192,9 @@ def main():
             title="Example ACC",
         )
 
-    acc_data_filtered: defaultdict[str, dict[str, dict[str, Series]]] = {
-        side: {
-            user: {
-                session_name: Series(
-                    moving_avg_acc(
-                        data=session_data,
-                        window_size=window_size,
-                    ),
-                    index=session_data.index,
-                )
-                for session_name, session_data in user_acct_data.items()
-            }
-            for user, user_acct_data in tqdm(
-                acc_data[side].items(),
-                desc=f'Filtering ACC data for side "{side}"',
-                colour="green",
-            )
-        }
-        for side in acc_data.keys()
-    }
+    acc_data_filtered = apply_moving_avg_filtering(
+        acc_data=acc_data, window_size=window_size, n_jobs=n_jobs
+    )
 
     if plots:
         make_lineplot(
@@ -143,7 +205,7 @@ def main():
         )
 
     acc_data_standardized = rescaling(
-        data=acc_data_filtered, rescaling_method=standardize
+        data=acc_data_filtered, rescaling_method=standardize, n_jobs=n_jobs
     )
 
     if plots:
