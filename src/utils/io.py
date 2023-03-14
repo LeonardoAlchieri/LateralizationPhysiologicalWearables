@@ -196,6 +196,7 @@ def load_and_prepare_data(
                         path.split("/")[-1].split(".")[0].split("_")[-1]
                     )
                     current_user_name: str = path.split("/")[-5]
+                    
                 if len(data_loaded.columns) == 1:
                     if data_type is None:
                         all_data_as_dict[chosen_side][current_user_name][
@@ -213,7 +214,7 @@ def load_and_prepare_data(
                     else:
                         all_data_as_dict[chosen_side][current_user_name][
                             current_session_name
-                        ] = data_loaded.iloc[:, 0]
+                        ] = data_loaded
                 del data_loaded
             else:
                 NotImplementedError(

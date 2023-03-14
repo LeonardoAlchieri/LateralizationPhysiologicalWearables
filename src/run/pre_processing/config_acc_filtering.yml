@@ -1,0 +1,10 @@
+path_to_main_folder: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
+path_to_save_folder: "./data.nosync/usilaughs/filtered"
+path_to_experiment_time: "./data.nosync/usilaughs/experiment_time.csv"
+window_size: 32 # the window size (for the moving avg) is 1sec, i.e. 32 samples, since the frequency of the ACC is 32Hz
+plots: True
+clean_plots: True
+mode: 1
+device: "E4"
+concat_sessions: True
+subset_data: False
