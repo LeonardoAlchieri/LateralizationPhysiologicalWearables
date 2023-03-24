@@ -37,12 +37,13 @@ def apply_moving_avg_filtering(
         results = {
             side: {
                 user: {
-                    session_name: Series(
+                    session_name: DataFrame(
                         moving_avg_acc(
                             data=session_data,
                             window_size=window_size,
                         ),
                         index=session_data.index,
+                        columns=session_data.columns if isinstance(session_data, DataFrame) else None,
                     )
                     for session_name, session_data in user_acct_data.items()
                 }
@@ -61,12 +62,13 @@ def apply_moving_avg_filtering(
         ) -> tuple[str, Series]:
             return (
                 session_name,
-                Series(
+                DataFrame(
                     moving_avg_acc(
                         data=session_data,
                         window_size=window_size,
                     ),
                     index=session_data.index,
+                    columns=session_data.columns if isinstance(session_data, DataFrame) else None,
                 ),
             )
 

@@ -3,7 +3,7 @@
 from distutils.log import warn
 from logging import getLogger
 from typing import Callable
-from numpy import amax, nan, ndarray, pad
+from numpy import amax, nan, ndarray, pad, stack
 from pandas import DataFrame, IndexSlice, Series, array, Index
 from scipy.signal import butter, lfilter, filtfilt
 
@@ -94,7 +94,11 @@ def butter_lowpass_filter_filtfilt(
         ndarray: returns the data filtered
     """
     b, a = butter_lowpass(cutoff, fs, order=order)
-    y: ndarray = filtfilt(b=b, a=a, x=data.values)
+    if isinstance(data, DataFrame):
+        y: ndarray = filtfilt(b=b, a=a, x=data.iloc[:,0].values)
+        y = stack([y, data.iloc[:,1].values], axis=1)
+    elif isinstance(data, Series):
+        y: ndarray = filtfilt(b=b, a=a, x=data.values)
     return y
 
 

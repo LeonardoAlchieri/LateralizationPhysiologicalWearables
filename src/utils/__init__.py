@@ -6,6 +6,7 @@ from functools import wraps
 from logging import getLogger
 from sys import __stdout__
 import sys
+from tqdm import tqdm
 from os import devnull
 from pandas import (
     DataFrame,
@@ -19,6 +20,7 @@ from pandas import (
     Series,
     Timedelta,
 )
+from joblib import Parallel, delayed
 
 logger = getLogger("utils")
 
@@ -48,7 +50,7 @@ INTENSITIES_MAPPING: dict[str, float] = {"low": 0, "medium": 1, "high": 2}
 def blockPrinting(func):
     """Method to decorate a function and block all prints in it.
 
-    Creditws to Fowler on Stackoverflow → https://stackoverflow.com/a/52605530/17422200
+    Credits to Fowler on Stackoverflow → https://stackoverflow.com/a/52605530/17422200
     """
 
     def func_wrapper(*args, **kwargs):
@@ -101,9 +103,7 @@ def get_execution_time(func: Callable):
     return wrapper
 
 
-def make_timestamp_idx(
-    dataframe: DataFrame, side: str, data_name: str, individual_name: str | None = None
-) -> DataFrame:
+def make_timestamp_idx(dataframe: DataFrame, data_name: str) -> DataFrame:
     """A simple method to make the timestamp in a dataframe as the index for it.
 
     Parameters
@@ -425,14 +425,16 @@ def segment_over_experiment_time(
         for side, side_data in data_dict.items()
     }
 
+
 def remove_empty_sessions(data_dict: dict[str, dict[str, dict[str, Series]]]):
     # NOTE: first remove the sessions, then remove the users who do not have any sessions
-    
+
     data_dict_sessions_removed = {
         side: {
             user: {
                 session: user_data
-                for session, user_data in user_data.items() if not user_data.empty
+                for session, user_data in user_data.items()
+                if not user_data.empty
             }
             for user, user_data in side_data.items()
         }
@@ -440,11 +442,84 @@ def remove_empty_sessions(data_dict: dict[str, dict[str, dict[str, Series]]]):
     }
     return {
         side: {
-            user: {
-                session: user_data
-                for session, user_data in user_data.items()
-            }
-            for user, user_data in side_data.items() if len(side_data) > 0
+            user: {session: user_data for session, user_data in user_data.items()}
+            for user, user_data in side_data.items()
+            if len(side_data) > 0
         }
         for side, side_data in data_dict_sessions_removed.items()
     }
+
+
+def parallel_iteration(func):
+    """Method to decorate a function to run over the nested dictionary in parallel."""
+
+    def func_wrapper(data, n_jobs, *args, **kwargs):
+        # n_jobs = -1
+        if n_jobs == 1:
+            results = {
+                side: {
+                    user: {
+                        session_name: DataFrame(
+                            func(session_data, *args, **kwargs),
+                            index=session_data.index,
+                            columns=session_data.columns
+                            if isinstance(session_data, DataFrame)
+                            else None,
+                        )
+                        for session_name, session_data in user_data.items()
+                    }
+                    for user, user_data in tqdm(
+                        data[side].items(),
+                        desc=f'Filtering for side "{side}"',
+                        colour="green",
+                    )
+                }
+                for side in data.keys()
+            }
+        elif n_jobs > 1 or n_jobs == -1:
+
+            def super_func(func, session_name, session_data, *args, **kwargs):
+                return (session_name, func(session_data, *args, **kwargs))
+
+            results = {
+                side: {
+                    user: Parallel(n_jobs=n_jobs)(
+                        delayed(super_func)(
+                            func, session_name, session_data, *args, **kwargs
+                        )
+                        for session_name, session_data in user_data.items()
+                    )
+                    for user, user_data in tqdm(
+                        data[side].items(),
+                        desc=f'Filtering for side "{side}"',
+                        colour="green",
+                    )
+                }
+                for side in data.keys()
+            }
+
+            results = {
+                side: {
+                    user: {
+                        session_name: DataFrame(
+                            session_data,
+                            index=data[side][user][session_name].index,
+                            columns=data[side][user][session_name].columns
+                            if isinstance(data[side][user][session_name], DataFrame)
+                            else None,
+                        )
+                        if isinstance(session_data, Series)
+                        or isinstance(session_data, ndarray)
+                        else session_data
+                        for (session_name, session_data) in user_data
+                    }
+                    for user, user_data in results[side].items()
+                }
+                for side in results.keys()
+            }
+        else:
+            raise ValueError(f'Invalid value for "n_jobs": got {n_jobs}')
+
+        return results
+
+    return func_wrapper

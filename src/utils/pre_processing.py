@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Callable
 
 from joblib import Parallel, delayed
-from numpy import array, ndarray
+from numpy import array, ndarray, stack
 from pandas import Series, concat, DataFrame
 from tqdm import tqdm
 
@@ -92,9 +92,18 @@ def rescaling(
         data: defaultdict[str, dict[str, Series]] = {
             side: {
                 user: {
-                    session: Series(
-                        rescaling_method(data[side][user][session]),
+                    session: DataFrame(
+                        rescaling_method(data[side][user][session])
+                        if isinstance(data[side][user][session], Series)
+                        else stack(
+                            [
+                                rescaling_method(data[side][user][session].iloc[:, 0]),
+                                data[side][user][session].iloc[:, 1].values,
+                            ],
+                            axis=1,
+                        ),
                         index=data[side][user][session].index,
+                        columns=data[side][user][session].columns,
                     )
                     for session in data[side][user].keys()
                 }
