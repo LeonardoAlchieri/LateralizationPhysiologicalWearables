@@ -68,7 +68,7 @@ def apply_moving_avg_filtering(
                         window_size=window_size,
                     ),
                     index=session_data.index,
-                    columns=session_data.columns if isinstance(session_data, DataFrame) else None,
+                    columns=['ACC'],
                 ),
             )
 
@@ -121,6 +121,7 @@ def main():
     subset_data: bool = configs["subset_data"]
     n_jobs: int = configs.get("n_jobs", 1)
     path_to_experiment_time: str | None = configs.get("path_to_experiment_time", None)
+    savetype: str = configs.get("savetype", "csv")
 
     if clean_plots:
         files_to_remove = glob("./visualizations/ACC/*.pdf")
@@ -154,8 +155,6 @@ def main():
                 session: make_timestamp_idx(
                     dataframe=session_data,
                     data_name="ACC",
-                    individual_name=user,
-                    side=side,
                 )
                 for session, session_data in acc_data[side][user].items()
             }
@@ -238,13 +237,24 @@ def main():
                 )
 
                 path_to_save: str = f"{path_to_save_folder}/{side}/ACC/"
-                filename: str = f"{user}.parquet"
+                if savetype == "parquet":
+                    filename: str = f"{user}.parquet"
 
-                Path(path_to_save).mkdir(parents=True, exist_ok=True)
+                    Path(path_to_save).mkdir(parents=True, exist_ok=True)
 
-                df_to_save.to_parquet(
-                    join_paths(path_to_save, filename),
-                )
+                    df_to_save.to_parquet(
+                        join_paths(path_to_save, filename),
+                    )
+                elif savetype == "csv":
+                    filename: str = f"{user}.csv"
+
+                    Path(path_to_save).mkdir(parents=True, exist_ok=True)
+
+                    df_to_save.to_csv(
+                        join_paths(path_to_save, filename),
+                    )
+                else:
+                    raise ValueError(f'Unknown savetype "{savetype}"')
     else:
         NotImplementedError(
             "The code does not handle the case when there is no session concatenation yet."

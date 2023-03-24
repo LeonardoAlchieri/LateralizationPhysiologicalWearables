@@ -4,7 +4,7 @@ from logging import getLogger
 from typing import Callable
 
 from joblib import Parallel, delayed
-from numpy import array, ndarray, stack
+from numpy import array, ndarray, stack, nanmean, nanstd
 from pandas import Series, concat, DataFrame
 from tqdm import tqdm
 
@@ -89,7 +89,7 @@ def rescaling(
     """
     # TODO: do this using a decorator function
     if n_jobs == 1:
-        data: defaultdict[str, dict[str, Series]] = {
+        data: defaultdict[str, dict[str, DataFrame]] = {
             side: {
                 user: {
                     session: DataFrame(
@@ -117,12 +117,13 @@ def rescaling(
         }
     elif n_jobs > 1 or n_jobs == -1:
 
-        def support_rescaling(session: str, session_data: Series | DataFrame):
+        def support_rescaling(session: str, session_data: DataFrame):
             return (
                 session,
-                Series(
-                    rescaling_method(session_data),
+                DataFrame(
+                    rescaling_method(session_data.iloc[:, 0].values),
                     index=session_data.index,
+                    columns=session_data.columns,
                 ),
             )
 
@@ -170,5 +171,6 @@ def standardize(eda_signal: Series | ndarray | list) -> ndarray:
         returns an array standardized
     """
     y: ndarray = array((eda_signal))
-    yn: ndarray = (y - y.mean()) / y.std()
+
+    yn: ndarray = (y - nanmean(y)) / nanstd(y)
     return yn

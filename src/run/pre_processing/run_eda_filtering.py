@@ -39,7 +39,7 @@ logger = getLogger("main")
 
 @parallel_iteration
 @blockPrinting
-def perform_artefact_detection(
+def gashis_artefact_detection(
     data: DataFrame | Series,
     n_jobs: int = 1,
     window_size: int = 4,
@@ -52,6 +52,10 @@ def perform_artefact_detection(
         window_size=window_size,
         return_vals=True,
     )[1].set_index("Time", inplace=False)
+    
+@parallel_iteration
+def acc_artefact_detection(data: DataFrame | Series, acc_magitude_data: DataFrame | Series, n_jobs: int = 1):
+    ...
 
 
 def main():
@@ -74,6 +78,7 @@ def main():
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
     artefact_detection: int = configs["artefact_detection"]
+    acc_data_path: str | None = configs.get("acc_data_path", None)
 
     if clean_plots:
         files_to_remove = glob("./visualizations/EDA/*.pdf")
@@ -107,12 +112,15 @@ def main():
                     eda_data[side][user][session] = eda_data[side][user][session][:1000]
 
     if artefact_detection == 1:
-        eda_data = perform_artefact_detection(data=eda_data, window_size=4, n_jobs=-1)
+        eda_data = gashis_artefact_detection(data=eda_data, window_size=4, n_jobs=-1)
         # eda_data = perform_artefact_detection(eda_data)
     elif artefact_detection == 2:
-        raise NotImplementedError(
-            f"Artefact detection method {artefact_detection} not implemented yet."
-        )
+        acc_data = ...
+        eda_data = acc_artefact_detection(data=eda_data, n_jobs=-1, acc_magitude_data=...)
+        ...
+        # raise NotImplementedError(
+        #     f"Artefact detection method {artefact_detection} not implemented yet."
+        # )
     elif artefact_detection == 0:
         logger.info("No artefact implementation")
         eda_data = {
