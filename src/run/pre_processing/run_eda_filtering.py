@@ -43,6 +43,7 @@ def gashis_artefact_detection(
     data: DataFrame | Series,
     n_jobs: int = 1,
     window_size: int = 4,
+    **kwargs,
 ):
     return compute_eda_artifacts(
         data=data,
@@ -52,10 +53,23 @@ def gashis_artefact_detection(
         window_size=window_size,
         return_vals=True,
     )[1].set_index("Time", inplace=False)
-    
+
+
 @parallel_iteration
-def acc_artefact_detection(data: DataFrame | Series, acc_magitude_data: DataFrame | Series, n_jobs: int = 1):
-    ...
+def acc_artefact_detection(
+    data: DataFrame | Series,
+    acc_magitude_data: dict[str, dict[str, dict[str, Series | DataFrame]]],
+    n_jobs: int = 1,
+    acc_threshold: float = 0.9,
+    **kwargs,
+) -> DataFrame:
+    side_name: str = kwargs["side_name"]
+    user_name: str = kwargs["user_name"]
+    session_name: str = kwargs["session_name"]
+    current_acc_data: DataFrame = acc_magitude_data[side_name][user_name][session_name]
+    bool_mask = current_acc_data > acc_threshold
+    data["Artifact"] = bool_mask.astype(int)
+    return data
 
 
 def main():
@@ -78,7 +92,6 @@ def main():
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
     artefact_detection: int = configs["artefact_detection"]
-    acc_data_path: str | None = configs.get("acc_data_path", None)
 
     if clean_plots:
         files_to_remove = glob("./visualizations/EDA/*.pdf")
@@ -114,15 +127,7 @@ def main():
     if artefact_detection == 1:
         eda_data = gashis_artefact_detection(data=eda_data, window_size=4, n_jobs=-1)
         # eda_data = perform_artefact_detection(eda_data)
-    elif artefact_detection == 2:
-        acc_data = ...
-        eda_data = acc_artefact_detection(data=eda_data, n_jobs=-1, acc_magitude_data=...)
-        ...
-        # raise NotImplementedError(
-        #     f"Artefact detection method {artefact_detection} not implemented yet."
-        # )
-    elif artefact_detection == 0:
-        logger.info("No artefact implementation")
+    else:
         eda_data = {
             side: {
                 user: {
@@ -133,10 +138,32 @@ def main():
             }
             for side in eda_data.keys()
         }
-    else:
-        raise ValueError(
-            f"Artefact detection method {artefact_detection} not recognized. Please choose between 0, 1 and 2."
-        )
+        if artefact_detection == 2:
+            acc_data_path: str | None = configs.get("acc_data_path", None)
+            if acc_data_path is None:
+                raise ValueError(
+                    f"When using artefact detection 2, acc_data_path must be provided. Received {acc_data_path}"
+                )
+            acc_threshold: float = configs.get("acc_threshold", 0.9)
+            acc_data = load_and_prepare_data(
+                path_to_main_folder=acc_data_path,
+                side=None,
+                data_type="ACC",
+                mode=mode,
+                device=device,
+            )
+            eda_data = acc_artefact_detection(
+                data=eda_data,
+                n_jobs=-1,
+                acc_magitude_data=acc_data,
+                acc_threshold=acc_threshold,
+            )
+        elif artefact_detection == 0:
+            logger.info("No artefact implementation")
+        else:
+            raise ValueError(
+                f"Artefact detection method {artefact_detection} not recognized. Please choose between 0, 1 and 2."
+            )
 
     # NOTE: segmentation over the experiment time has to happen after the
     # timestamp is made as index, since it is required for the segmentation

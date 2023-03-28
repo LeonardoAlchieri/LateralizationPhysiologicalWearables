@@ -455,16 +455,46 @@ def parallel_iteration(func):
 
     def func_wrapper(data, n_jobs, *args, **kwargs):
         # n_jobs = -1
+
         if n_jobs == 1:
+
+            def super_func(
+                session_data: DataFrame,
+                side_name,
+                user_name,
+                session_name,
+                *args,
+                **kwargs,
+            ):
+                intermediate_res = func(
+                    session_data,
+                    *args,
+                    **kwargs,
+                    side_name=side_name,
+                    user_name=user_name,
+                    session_name=session_name,
+                )
+                if isinstance(intermediate_res, DataFrame):
+                    new_cols = intermediate_res.columns
+                else:
+                    new_cols = session_data.columns
+
+                return DataFrame(
+                    intermediate_res,
+                    index=session_data.index,
+                    columns=new_cols if isinstance(session_data, DataFrame) else None,
+                )
+
             results = {
                 side: {
                     user: {
-                        session_name: DataFrame(
-                            func(session_data, *args, **kwargs),
-                            index=session_data.index,
-                            columns=session_data.columns
-                            if isinstance(session_data, DataFrame)
-                            else None,
+                        session_name: super_func(
+                            session_data,
+                            *args,
+                            **kwargs,
+                            side_name=side,
+                            user_name=user,
+                            session_name=session_name,
                         )
                         for session_name, session_data in user_data.items()
                     }
@@ -478,14 +508,49 @@ def parallel_iteration(func):
             }
         elif n_jobs > 1 or n_jobs == -1:
 
-            def super_func(func, session_name, session_data, *args, **kwargs):
-                return (session_name, func(session_data, *args, **kwargs))
+            def super_func(
+                session_data: DataFrame,
+                side_name,
+                user_name,
+                session_name,
+                *args,
+                **kwargs,
+            ):
+                intermediate_res = func(
+                    session_data,
+                    *args,
+                    **kwargs,
+                    side_name=side_name,
+                    user_name=user_name,
+                    session_name=session_name,
+                )
+                if isinstance(intermediate_res, DataFrame):
+                    new_cols = intermediate_res.columns
+                else:
+                    new_cols = session_data.columns
+
+                return (
+                    session_name,
+                    DataFrame(
+                        intermediate_res,
+                        index=session_data.index,
+                        columns=new_cols
+                        if isinstance(session_data, DataFrame)
+                        else None,
+                    ),
+                )
 
             results = {
                 side: {
                     user: Parallel(n_jobs=n_jobs)(
                         delayed(super_func)(
-                            func, session_name, session_data, *args, **kwargs
+                            func,
+                            session_data,
+                            side_name=side,
+                            user_name=user,
+                            session_name=session_name,
+                            *args,
+                            **kwargs,
                         )
                         for session_name, session_data in user_data.items()
                     )
