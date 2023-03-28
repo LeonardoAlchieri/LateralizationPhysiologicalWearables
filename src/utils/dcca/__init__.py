@@ -1,4 +1,4 @@
-from numpy import apply_along_axis, arange, mean, ndarray, sqrt, stack
+from numpy import apply_along_axis, arange, mean, ndarray, sqrt, stack, sum
 from numpy.lib.stride_tricks import as_strided
 from numpy.polynomial.polynomial import polyfit, polyval
 
@@ -56,7 +56,7 @@ def make_series_boxes(
     )
 
 
-def get_local_detrend(series_box: ndarray, polynomial_degs: int = 1) -> ndarray:
+def get_local_detrend(integrated_data: ndarray, polynomial_degs: int = 1) -> ndarray:
     """This method takes a series box (subseries to be compared), computes
     a polynomial fit (by default linear regression) and then returns its
     values
@@ -74,13 +74,13 @@ def get_local_detrend(series_box: ndarray, polynomial_degs: int = 1) -> ndarray:
         polynomial values over the series range
     """
 
-    x_in_box = arange(len(series_box))
-    coeff = polyfit(x=x_in_box, y=series_box, deg=polynomial_degs)
-    return polyval(x=x_in_box, c=coeff)
+    x_in_box = arange(integrated_data.shape[1])
+    coeffs = polyfit(x=x_in_box, y=integrated_data.T, deg=polynomial_degs)
+    return polyval(x_in_box, coeffs)
 
 
 def fddca_computation(
-    box_residuals: ndarray,
+    boxes_residuals: ndarray,
     time_scale: int,
 ) -> float:
     """This method takes the residuals of the boxes (for both x and y) and computes the
@@ -103,13 +103,22 @@ def fddca_computation(
     """
     # NOTE: I am doing this reshaping because it is the only way to give
     # 2 dimensions to apply_along_axis
-    box_residuals = box_residuals.reshape(2, time_scale + 1)
 
-    x_box_residuals = box_residuals[0]
-    y_box_residuals = box_residuals[1]
-    # # NOTE: the boxes are already aligned correctly, since I applied
-    # # the +tau shift on y at the beginning
-    return (x_box_residuals * y_box_residuals).sum() / (time_scale + 1)
+    # Reshape the boxes_residuals array to be 3D
+    boxes_residuals = boxes_residuals.reshape(-1, 2, time_scale + 1)
+
+    # Get the x_box_residuals and y_box_residuals arrays
+    x_box_residuals = boxes_residuals[:, 0, :]
+    y_box_residuals = boxes_residuals[:, 1, :]
+
+    # Calculate the numerator of the FDDCA formula
+    numerator = sum(x_box_residuals * y_box_residuals, axis=1)
+
+    # Calculate the denominator of the FDDCA formula
+    denominator = time_scale + 1
+
+    # Calculate the FDCCA_squared value
+    return sum(numerator) / denominator
 
 
 def compute_FDCCA_squared(
@@ -155,23 +164,25 @@ def compute_FDCCA_squared(
     # time lag is
     y = y[(time_lag):]
     y_boxes = make_series_boxes(series=y, time_scale=time_scale, time_lag=time_lag, N=N)
-    x_boxes_integrated: ndarray = apply_along_axis(integrate_series, 1, x_boxes, mean_x)
-    y_boxes_integrated: ndarray = apply_along_axis(integrate_series, 1, y_boxes, mean_y)
-    x_local_detrend = apply_along_axis(get_local_detrend, 1, x_boxes_integrated)
-    y_local_detrend = apply_along_axis(get_local_detrend, 1, y_boxes_integrated)
+    x_boxes_integrated: ndarray = x_boxes - mean_x.reshape(1, -1)
+    y_boxes_integrated: ndarray = y_boxes - mean_y.reshape(1, -1)
+    # x_boxes_integrated: ndarray = apply_along_axis(integrate_series, 1, x_boxes, mean_x)
+    # y_boxes_integrated: ndarray = apply_along_axis(integrate_series, 1, y_boxes, mean_y)
+    # x_local_detrend = apply_along_axis(get_local_detrend, 1, x_boxes_integrated)
+    # y_local_detrend = apply_along_axis(get_local_detrend, 1, y_boxes_integrated)
+    x_local_detrend = get_local_detrend(x_boxes_integrated)
+    y_local_detrend = get_local_detrend(y_boxes_integrated)
 
     x_boxes_residuals = x_boxes_integrated - x_local_detrend
     y_boxes_residuals = y_boxes_integrated - y_local_detrend
 
     boxes_residuals = stack((x_boxes_residuals, y_boxes_residuals), axis=1)
     boxes_residuals = boxes_residuals.reshape(boxes_residuals.shape[0], -1)
-    FDCCA_squared = apply_along_axis(
-        func1d=fddca_computation,
-        axis=1,
-        arr=boxes_residuals,
-        time_scale=time_scale,
-    ).sum() / (N - time_scale - time_lag)
 
+    FDCCA_squared = fddca_computation(
+        boxes_residuals=boxes_residuals, time_scale=time_scale
+    ) / (N - time_scale - time_lag)
+    # -0.0013385811760114692
     return FDCCA_squared
 
 
