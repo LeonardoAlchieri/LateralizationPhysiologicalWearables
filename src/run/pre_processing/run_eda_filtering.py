@@ -13,7 +13,7 @@ from warnings import warn
 from eda_artefact_detection.detection import compute_eda_artifacts
 from numpy import ndarray, stack
 from pandas import DataFrame, IndexSlice, Series, concat, read_csv
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 path.append(".")
 from collections import defaultdict

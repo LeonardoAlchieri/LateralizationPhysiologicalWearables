@@ -4,7 +4,7 @@ from os.path import basename
 from joblib import Parallel, delayed
 from numpy import isnan, ndarray, savetxt, stack
 from pandas import DataFrame, IndexSlice, Series, Timedelta, Timestamp
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from src.feature_extraction.eda import get_eda_features
 from src.utils.io import load_config

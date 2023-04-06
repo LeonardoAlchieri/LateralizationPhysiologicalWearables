@@ -1,12 +1,14 @@
-from pandas import DataFrame, concat, to_datetime, MultiIndex
 from copy import deepcopy
+
 from numpy import nan
+from pandas import DataFrame, MultiIndex, concat, to_datetime, Series
 
 from src.utils import (
-    slice_user_over_experiment_time,
     INTENSITIES_MAPPING,
     SESSIONS_GROUPINGS,
+    slice_user_over_experiment_time,
 )
+from src.utils.io import read_experiment_info
 
 
 def add_events_to_signal_data(
@@ -116,3 +118,14 @@ def add_laughter_to_experiment_info(
     ).sort_index()
 
     return experimento_info_w_laugh, sessions_groupings_w_laugh
+
+
+class ExperimentInfo:
+    def __init__(self, path: str, mode: int = 1):
+        self.data = read_experiment_info(path, mode)
+
+    def to_dict(self) -> dict[str, Series]:
+        return {
+            participant: self.data.loc[participant, :]
+            for participant in list(self.data.index.unique())
+        }

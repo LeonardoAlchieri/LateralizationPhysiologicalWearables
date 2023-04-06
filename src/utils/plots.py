@@ -1,19 +1,22 @@
+from collections import defaultdict
 from itertools import cycle
 from os.path import join as join_paths
 from pathlib import Path
 
 from matplotlib.axes import SubplotBase
 from matplotlib.patches import Patch
-from matplotlib.pyplot import cm, figure
+from matplotlib.pyplot import close, cm, figure
 from matplotlib.pyplot import legend
 from matplotlib.pyplot import legend as make_legend
-from matplotlib.pyplot import plot, savefig, show, style
+from matplotlib.pyplot import plot, savefig, show, style, subplots
 from matplotlib.pyplot import title
 from matplotlib.pyplot import title as figtitle
 from matplotlib.pyplot import xlabel, xticks, ylabel
 from numpy import asarray, mean, ndarray, std, unique
-from pandas import DataFrame, Series
+from pandas import DataFrame, IndexSlice, Series, Timestamp, to_datetime
 from seaborn import boxplot, heatmap, set
+from tqdm.auto import tqdm
+from tqdm.notebook import tqdm
 
 
 def bland_altman_plot(
@@ -328,3 +331,106 @@ def plot_heatmap_boxplot(
         bbox_inches="tight",
     )
     show()
+
+
+def make_biometrics_plots_together_matplotlib(
+    data: defaultdict[str, defaultdict[str, defaultdict[str, Series]]],
+    user_id: str,
+    session_id: str,
+    dataset: str,
+    experiment_info: DataFrame,
+    subset_data: bool = False,
+    **kwargs,
+) -> None:
+    data = {key: val for key, val in data.items() if val is not None}
+    fig, axs = subplots(
+        len(data.keys()), 1, figsize=(14, 11 * len(data.keys())), sharex=True
+    )
+    if len(data.keys()) == 1:
+        axs = [axs]
+
+    for n, (data_type, physiological_data) in tqdm(
+        enumerate(data.items()), desc="Plotting data", total=len(data.keys())
+    ):
+        if physiological_data is None:
+            continue
+
+        for side, specific_side_data in physiological_data.items():
+            user_data: DataFrame = specific_side_data[user_id]
+
+            if data_type == "EDA":
+                eda_type: str = kwargs["eda_type"]
+                data_to_plot = user_data[eda_type]
+            else:
+                data_to_plot = user_data.iloc[:, 0]
+
+            data_to_plot = data_to_plot.loc[IndexSlice[session_id, :]]
+            if subset_data:
+                data_to_plot = data_to_plot[:1000]
+
+            data_to_plot.index = to_datetime(data_to_plot.index)
+            axs[n].plot(
+                data_to_plot.index,
+                data_to_plot.values,
+                label=side,
+                linestyle="-",
+            )
+            axs[n].set_title(data_type)
+
+        if dataset == "mwc2022":
+            start_exp = Timestamp(
+                experiment_info.loc[IndexSlice[user_id, session_id], "actual_bed_time"]
+            )
+            end_exp = Timestamp(
+                experiment_info.loc[IndexSlice[user_id, session_id], "wake_up_time"]
+            )
+            axs[n].axvspan(
+                xmin=start_exp,
+                xmax=end_exp,
+                color="#828282",
+                alpha=0.3,
+                label="sleep time",
+            )
+            axs[n].set_ylabel(f"Time")
+            axs[n].set_ylabel(f"{data_type}")
+        elif dataset == "usi_laughs":
+            events = set(
+                ["_".join(col.split("_")[1:]) for col in experiment_info.columns]
+            )
+            for i, event in enumerate(events):
+                start_exp = Timestamp(experiment_info.loc[user_id, f"start_{event}"])
+                end_exp = Timestamp(experiment_info.loc[user_id, f"end_{event}"])
+                if "baseline" in event and i == 0:
+                    label = "baseline"
+                elif "baseline" not in event:
+                    label = event
+                else:
+                    label = None
+
+                axs[n].axvspan(
+                    xmin=start_exp,
+                    xmax=end_exp,
+                    color="#828282" if "baseline" in event else "#548572",
+                    alpha=0.3,
+                    label=label,
+                )
+                axs[n].set_ylabel(f"Time")
+                axs[n].set_ylabel(f"{data_type}")
+        else:
+            raise ValueError(
+                f"Received as dataset {dataset}, but only mwc2022 and usi_laughs are supported"
+            )
+
+    handles, labels = axs[-1].get_legend_handles_labels()
+    fig.legend(
+        handles, labels, fontsize="x-large", title="Side", title_fontsize="xx-large"
+    )
+    fig.suptitle(
+        f"Plots for all singals for user {user_id}, session {session_id}",
+        fontsize=30,
+        y=0.97,
+    )
+    savefig(f"../visualizations/{dataset}_{user_id}_{session_id}.pdf")
+    close()
+
+    return start_exp, end_exp

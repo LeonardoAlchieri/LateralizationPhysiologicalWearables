@@ -1,10 +1,19 @@
-from typing import Any
+from collections import defaultdict
 from glob import glob
 from logging import getLogger
-from tqdm import tqdm
-from collections import defaultdict
+from typing import Any
+
+from pandas import (
+    DataFrame,
+    IndexSlice,
+    MultiIndex,
+    Series,
+    read_csv,
+    read_parquet,
+    to_datetime,
+)
+from tqdm.auto import tqdm
 from yaml import safe_load as load_yaml
-from pandas import DataFrame, MultiIndex, Series, concat, read_csv, read_parquet
 
 from src.utils import get_execution_time, make_timestamp_idx
 
@@ -28,9 +37,10 @@ def load_config(path: str) -> dict[str, Any]:
 
 def load_nested_parquet_data(
     path_to_main_folder: str, side: str | None = None, data_type: str | None = None
-) -> defaultdict[str, defaultdict[str, dict[str, Series]]] | defaultdict[
-    str, dict[str, Series | DataFrame]
-]:
+) -> (
+    defaultdict[str, defaultdict[str, dict[str, Series]]]
+    | defaultdict[str, dict[str, Series | DataFrame]]
+):
     """Simple method to load multiple parquet files in a folder > subfolder structure.
     The main folder should be given, and then the method will crawl and load all of the
     parquet files inside the folder structure, which is expected as:
@@ -107,7 +117,6 @@ def load_nested_parquet_data(
         }
 
 
-
 # TODO: remove one folder level → can just use a Series w/o problems
 def load_and_prepare_data(
     path_to_main_folder: str,
@@ -115,9 +124,10 @@ def load_and_prepare_data(
     data_type: str | None = None,
     mode: int = 1,
     device: str = "E4",
-) -> defaultdict[str, defaultdict[str, dict[str, Series]]] | defaultdict[
-    str, dict[str, Series | DataFrame]
-]:
+) -> (
+    defaultdict[str, defaultdict[str, dict[str, Series]]]
+    | defaultdict[str, dict[str, Series | DataFrame]]
+):
     """Simple method to load multiple parquet files in a folder > subfolder structure.
     The main folder should be given, and then the method will crawl and load all of the
     parquet files inside the folder structure, which is expected as:
@@ -196,7 +206,7 @@ def load_and_prepare_data(
                         path.split("/")[-1].split(".")[0].split("_")[-1]
                     )
                     current_user_name: str = path.split("/")[-5]
-                    
+
                 if len(data_loaded.columns) == 1:
                     if data_type is None:
                         all_data_as_dict[chosen_side][current_user_name][
@@ -234,7 +244,7 @@ def read_experimentinfo(path: str, user: str, mode: int = 1) -> DataFrame:
     user : str
         user name, e.g. s099
     mode : int, optional
-        mode for the loading, by default 1. If 1, it will be assumed the 
+        mode for the loading, by default 1. If 1, it will be assumed the
         structure from USILaughs, otherwise from MWC2022.
 
     Returns
@@ -279,3 +289,102 @@ def save_data(
             f'{save_format} is not a valid format. Accepted: "parquet" or "csv"'
         )
     logger.info("Data saved successfully")
+
+
+def load_processed_data(
+    path: str, file_format: str | None = None
+) -> defaultdict[str, defaultdict[str, Series | DataFrame]]:
+    """Load data from path.
+
+    Parameters
+    ----------
+    path : str
+        Path to the data.
+    file_format : str | None, optional
+        File format of the data, by default None
+
+    Returns
+    -------
+    defaultdict[str, defaultdict[str, Series | DataFrame]]
+        Dictionary of data.
+
+    Raises
+    ------
+    ValueError
+        If no data is found in the path.
+    NotImplementedError
+        If the pickle file format is not supported.
+    NotImplementedError
+        If the json file format is not supported.
+    NotImplementedError
+        If the hdf file format is not supported.
+    NotImplementedError
+        If the feather file format is not supported.
+    ValueError
+        If a value other than the ones described above is given.
+    """
+    paths: list[str] = glob(path)
+    if len(paths) == 0:
+        raise ValueError(
+            f"No data found in path {path}. Please check \
+            that it contains the data or the formatting is correct."
+        )
+    data: defaultdict[str, defaultdict[str, Series]] = defaultdict(
+        lambda: defaultdict()
+    )
+
+    if file_format is None:
+        file_format: str = path.split(".")[-1]
+
+    for file in tqdm(paths, desc="Loading data"):
+        side_name = file.split("/")[-3]
+        user_name = file.split("/")[-1].split(".")[0]
+        if file_format == "parquet":
+            data[side_name][user_name] = read_parquet(file)
+        elif file_format == "csv":
+            data[side_name][user_name] = read_csv(file, index_col=0, header=[0])
+        elif file_format == "pickle":
+            raise NotImplementedError(f"File format {file_format} not implemented yet.")
+        elif file_format == "json":
+            raise NotImplementedError(f"File format {file_format} not implemented yet.")
+        elif file_format == "hdf":
+            raise NotImplementedError(f"File format {file_format} not implemented yet.")
+        elif file_format == "feather":
+            raise NotImplementedError(f"File format {file_format} not implemented yet.")
+        else:
+            raise ValueError(f"File format {file_format} not recognized.")
+
+    return data
+
+
+def read_experiment_info(path: str, mode: int = 1) -> DataFrame:
+    if mode == 1:
+        def move_event_to_columns(df):
+            starts = {}
+            ends = {}
+            for event in df.index.get_level_values(1).unique():
+                starts[f"start_{event}"] = df.loc[IndexSlice[:, event], "start"].values
+                ends[f"end_{event}"] = df.loc[IndexSlice[:, event], "end"].values
+            return DataFrame({**starts, **ends})
+
+        experiment_info = read_csv(
+            path, index_col=[0, 1]
+        )
+        indexes_to_drop = [
+            idx
+            for idx in experiment_info.index
+            if "baseline" not in idx[1] and "cognitive_load" not in idx[1]
+        ]
+        experiment_info = experiment_info.drop(indexes_to_drop, inplace=False)
+        experiment_info = experiment_info.groupby(axis=0, level=0, group_keys=True).apply(
+            move_event_to_columns
+        )
+        experiment_info.index = experiment_info.index.droplevel(1)
+        experiment_info = experiment_info.applymap(to_datetime)
+        experiment_info = experiment_info.applymap(lambda x: x.tz_localize("Europe/Rome"))
+    elif mode == 2:
+        raise NotImplementedError(f'Mode {mode} not implemented yet.')
+    else:
+        raise ValueError(f'Mode {mode} not recognized.')
+    
+    return experiment_info

@@ -6,7 +6,7 @@ from functools import wraps
 from logging import getLogger
 from sys import __stdout__
 import sys
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from os import devnull
 from pandas import (
     DataFrame,
