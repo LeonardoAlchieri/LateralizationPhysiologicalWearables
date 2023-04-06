@@ -45,7 +45,7 @@ def main():
     device: str = configs["device"]
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
-    path_to_experiment_time: str = configs["path_to_experiment_time"]
+    path_to_experiment_time: str = configs.get("path_to_experiment_time", None)
 
     if clean_plots:
         files_to_remove = glob("./visualizations/BVP/*.pdf")
@@ -53,7 +53,15 @@ def main():
             remove_file(f)
         del files_to_remove
 
-    experiment_time = read_csv(path_to_experiment_time, index_col=0)
+    experiment_time: DataFrame | None
+    if path_to_experiment_time is None:
+        logger.warning(
+            f'No path to experiment time provided. Not applying filter "segment_over_experiment_time".'
+        )
+        experiment_time = None
+    else:
+        # TODO: add check for other file formats
+        experiment_time = read_csv(path_to_experiment_time, index_col=0)
 
     bvp_data = load_and_prepare_data(
         path_to_main_folder=path_to_main_folder,
@@ -76,8 +84,6 @@ def main():
                 session: make_timestamp_idx(
                     dataframe=session_data,
                     data_name="BVP",
-                    individual_name=user,
-                    side=side,
                 )
                 for session, session_data in bvp_data[side][user].items()
             }
@@ -87,7 +93,8 @@ def main():
     }
     # NOTE: segmentation over the experiment time has to happen after the
     # timestamp is made as index, since it is required for the segmentation
-    bvp_data = segment_over_experiment_time(bvp_data, experiment_time)
+    if experiment_time is not None:
+        bvp_data = segment_over_experiment_time(bvp_data, experiment_time)
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
     # Each pandas Series contains also the `attr` field with the
@@ -158,6 +165,7 @@ def main():
 
     if concat_sessions:
         start = time()
+        # FIXME: wrong session name recorded
         bvp_data_standardized = concate_session_data(bvp_data_standardized)
 
         logger.info("Concatenating session data took %.2fs" % (time() - start))

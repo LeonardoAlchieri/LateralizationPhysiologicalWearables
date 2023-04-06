@@ -1,22 +1,19 @@
 from itertools import cycle
-from numpy import ndarray, asarray, mean, std, unique
 from os.path import join as join_paths
-from pandas import DataFrame, Series
-from matplotlib.pyplot import (
-    figure,
-    savefig,
-    plot,
-    xlabel,
-    style,
-    ylabel,
-    title as figtitle,
-    legend as make_legend,
-)
-from matplotlib.axes import SubplotBase
-from matplotlib.pyplot import xticks, xlabel, ylabel, legend, cm, show, title
-from matplotlib.patches import Patch
-from seaborn import set, heatmap
 from pathlib import Path
+
+from matplotlib.axes import SubplotBase
+from matplotlib.patches import Patch
+from matplotlib.pyplot import cm, figure
+from matplotlib.pyplot import legend
+from matplotlib.pyplot import legend as make_legend
+from matplotlib.pyplot import plot, savefig, show, style
+from matplotlib.pyplot import title
+from matplotlib.pyplot import title as figtitle
+from matplotlib.pyplot import xlabel, xticks, ylabel
+from numpy import asarray, mean, ndarray, std, unique
+from pandas import DataFrame, Series
+from seaborn import boxplot, heatmap, set
 
 
 def bland_altman_plot(
@@ -96,6 +93,8 @@ def make_lineplot(
                     plot(data, label=which)
                 elif isinstance(data, DataFrame):
                     for i, column in enumerate(data.columns):
+                        if isinstance(column, int):
+                            column = which
                         if which in column[-1]:
                             data_to_plot = data[column].dropna()
                             plot(
@@ -192,7 +191,10 @@ def cliff_delta_plot(
     xticks(rotation=30, ha="right")
     xlabel("Feature")
     ylabel("Event")
-    title(f"Cliff Delta values ({signal_name.replace('_filt', '').replace('_', ' ')})", fontsize=40)
+    title(
+        f"Cliff Delta values ({signal_name.replace('_filt', '').replace('_', ' ')})",
+        fontsize=40,
+    )
 
     def make_custom_handles(bins: DataFrame, cmap) -> list[Patch]:
         labels: list[Patch] = list()
@@ -253,19 +255,76 @@ def cliff_delta_plot(
     )
 
 
-def correlation_heatmap_plot(data: DataFrame, signal_name: str, path_to_save: str = './visualizations/') -> None:
+def correlation_heatmap_plot(
+    data: DataFrame, signal_name: str, path_to_save: str = "./visualizations/"
+) -> None:
     set(font_scale=1.6)
     figure(figsize=(7, 5))
-    ax = heatmap(data, 
-            xticklabels=data.columns,
-            vmax=1, vmin=-1, center=0,
-            cmap='coolwarm',
-            yticklabels=data.index.str.replace("_", " "), 
-            annot=True)
+    ax = heatmap(
+        data,
+        xticklabels=data.columns,
+        vmax=1,
+        vmin=-1,
+        center=0,
+        cmap="coolwarm",
+        yticklabels=data.index.str.replace("_", " "),
+        annot=True,
+    )
     ax.tick_params(left=True, bottom=True)
-    ax.set_ylabel('Event')
-    title(f"Correlation coefficient per event ({signal_name.replace('_filt', '').replace('_', ' ')})", fontsize=20)
+    ax.set_ylabel("Event")
+    title(
+        f"Correlation coefficient per event ({signal_name.replace('_filt', '').replace('_', ' ')})",
+        fontsize=20,
+    )
     savefig(
         join_paths(path_to_save, f"correlation_heatmap_{signal_name}.pdf"),
         bbox_inches="tight",
     )
+
+
+def plot_heatmap_boxplot(
+    data: dict,
+    signal: str,
+    data_name: str = "",
+    measure_name: str = "",
+    nested: bool = False,
+    **kwargs,
+):
+    if nested:
+        reform = {
+            (outerKey, innerKey): values
+            for outerKey, innerDict in data.items()
+            for innerKey, values in innerDict.items()
+        }
+        df_to_save = DataFrame.from_dict(reform).stack(level=1, dropna=False).T
+    else:
+        df_to_save: Series = Series(data)
+        df_to_save: DataFrame = (
+            DataFrame(df_to_save, columns=[measure_name]).sort_index().T
+        )
+
+    figure(figsize=(len(df_to_save.columns), 1))
+    heatmap(
+        df_to_save,
+        xticklabels=df_to_save.columns,
+        vmax=kwargs.get("vmax", 1),
+        vmin=kwargs.get("vmin", -1),
+        center=kwargs.get("center", 0),
+        cmap=kwargs.get("cmap", "coolwarm"),
+        yticklabels=df_to_save.index,
+        annot=True,
+    )
+    title(f"{measure_name} per user (signal)")
+    savefig(
+        f"../visualizations/user_{measure_name}_{signal}_{data_name}.pdf",
+        bbox_inches="tight",
+    )
+    show()
+
+    boxplot(x=df_to_save.iloc[0, :])
+    title(f"{measure_name} per user ({signal})")
+    savefig(
+        f"../visualizations/user_{measure_name}_boxplot_{signal}_{data_name}.pdf",
+        bbox_inches="tight",
+    )
+    show()

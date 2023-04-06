@@ -1,5 +1,5 @@
-from numpy import ndarray
-from pandas import Series
+from numpy import ndarray, stack
+from pandas import Series, DataFrame
 from cvxEDA import cvxEDA
 
 from src.utils import blockPrinting
@@ -28,6 +28,14 @@ def decomposition(
         the method returns a dictionary with the decomposed signals
         (see cvxEDA for more details)
     """
-    # TODO: see if the standardization is actually something we want!
-    yn = standardize(eda_signal=eda_signal)
+    if isinstance(eda_signal, Series) or (isinstance(eda_signal, ndarray) and eda_signal.ndim == 1):
+        # TODO: see if the standardization is actually something we want!
+        yn = standardize(eda_signal=eda_signal)
+    elif isinstance(eda_signal, DataFrame):
+        yn = standardize(eda_signal=eda_signal.iloc[:, 0])
+    elif isinstance(eda_signal, ndarray) and eda_signal.ndim == 2:
+        # TODO: see if the standardization is actually something we want!
+        yn = standardize(eda_signal=eda_signal[:,0])
+    else:
+        raise TypeError(f'eda_signal must be a Series, DataFrame or ndarray, not {type(eda_signal)}')
     return cvxEDA(yn, 1.0 / frequency)

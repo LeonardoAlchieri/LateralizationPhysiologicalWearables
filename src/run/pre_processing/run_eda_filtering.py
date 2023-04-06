@@ -1,4 +1,3 @@
-from typing import Any
 from glob import glob
 from os import remove as remove_file
 from os.path import join as join_paths
@@ -8,10 +7,12 @@ from pathlib import Path
 from random import choice as choose_randomly
 from sys import path
 from time import time
+from typing import Any
 from warnings import warn
 
-from numpy import ndarray
-from pandas import DataFrame, Series, concat, read_csv, IndexSlice
+from eda_artefact_detection.detection import compute_eda_artifacts
+from numpy import ndarray, stack
+from pandas import DataFrame, IndexSlice, Series, concat, read_csv
 from tqdm import tqdm
 
 path.append(".")
@@ -19,9 +20,11 @@ from collections import defaultdict
 from logging import DEBUG, INFO, basicConfig, getLogger
 
 from src.utils import (
+    blockPrinting,
     make_timestamp_idx,
+    parallel_iteration,
+    remove_empty_sessions,
     segment_over_experiment_time,
-    remove_empty_sessions
 )
 from src.utils.eda import decomposition, standardize
 from src.utils.filters import butter_lowpass_filter_filtfilt
@@ -32,6 +35,41 @@ from src.utils.pre_processing import concate_session_data, rescaling
 basicConfig(filename="logs/run_eda_filtering.log", level=DEBUG)
 
 logger = getLogger("main")
+
+
+@parallel_iteration
+@blockPrinting
+def gashis_artefact_detection(
+    data: DataFrame | Series,
+    n_jobs: int = 1,
+    window_size: int = 4,
+    **kwargs,
+):
+    return compute_eda_artifacts(
+        data=data,
+        show_database=True,
+        convert_dataframe=True,
+        output_path=None,
+        window_size=window_size,
+        return_vals=True,
+    )[1].set_index("Time", inplace=False)
+
+
+@parallel_iteration
+def acc_artefact_detection(
+    data: DataFrame | Series,
+    acc_magitude_data: dict[str, dict[str, dict[str, Series | DataFrame]]],
+    n_jobs: int = 1,
+    acc_threshold: float = 0.9,
+    **kwargs,
+) -> DataFrame:
+    side_name: str = kwargs["side_name"]
+    user_name: str = kwargs["user_name"]
+    session_name: str = kwargs["session_name"]
+    current_acc_data: DataFrame = acc_magitude_data[side_name][user_name][session_name]
+    bool_mask = current_acc_data > acc_threshold
+    data["Artifact"] = bool_mask.astype(int)
+    return data
 
 
 def main():
@@ -53,6 +91,7 @@ def main():
     device: str = configs["device"]
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
+    artefact_detection: int = configs["artefact_detection"]
 
     if clean_plots:
         files_to_remove = glob("./visualizations/EDA/*.pdf")
@@ -77,7 +116,6 @@ def main():
         mode=mode,
         device=device,
     )
-    
 
     if subset_data:
         warn("Subsetting data to 1000 samples per session.")
@@ -86,29 +124,56 @@ def main():
                 for session in eda_data[side][user].keys():
                     eda_data[side][user][session] = eda_data[side][user][session][:1000]
 
-    eda_data = {
-        side: {
-            user: {
-                session: make_timestamp_idx(
-                    dataframe=session_data,
-                    data_name="EDA",
-                    individual_name=user,
-                    side=side,
-                )
-                for session, session_data in eda_data[side][user].items()
+    if artefact_detection == 1:
+        eda_data = gashis_artefact_detection(data=eda_data, window_size=4, n_jobs=-1)
+        # eda_data = perform_artefact_detection(eda_data)
+    else:
+        eda_data = {
+            side: {
+                user: {
+                    session: make_timestamp_idx(dataframe=session_data, data_name="EDA")
+                    for session, session_data in eda_data[side][user].items()
+                }
+                for user in eda_data[side].keys()
             }
-            for user in eda_data[side].keys()
+            for side in eda_data.keys()
         }
-        for side in eda_data.keys()
-    }
+        if artefact_detection == 2:
+            acc_data_path: str | None = configs.get("acc_data_path", None)
+            if acc_data_path is None:
+                raise ValueError(
+                    f"When using artefact detection 2, acc_data_path must be provided. Received {acc_data_path}"
+                )
+            acc_threshold: float = configs.get("acc_threshold", 0.9)
+            acc_data = load_and_prepare_data(
+                path_to_main_folder=acc_data_path,
+                side=None,
+                data_type="ACC",
+                mode=mode,
+                device=device,
+            )
+            eda_data = acc_artefact_detection(
+                data=eda_data,
+                n_jobs=-1,
+                acc_magitude_data=acc_data,
+                acc_threshold=acc_threshold,
+            )
+        elif artefact_detection == 0:
+            logger.info("No artefact implementation")
+        else:
+            raise ValueError(
+                f"Artefact detection method {artefact_detection} not recognized. Please choose between 0, 1 and 2."
+            )
+
     # NOTE: segmentation over the experiment time has to happen after the
     # timestamp is made as index, since it is required for the segmentation
-    eda_data = segment_over_experiment_time(eda_data, experiment_time)
+    if experiment_time is not None:
+        eda_data = segment_over_experiment_time(eda_data, experiment_time)
     eda_data = remove_empty_sessions(eda_data)
-    
+
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
-    # Each pandas Series contains also the `attr` field with the
+    # Each pandas Series contains also the `attr` field  the
     # metadata relative to the specific user <-- pretty sure I did
     # not implement this at the end
 
@@ -134,7 +199,7 @@ def main():
     eda_data_filtered: defaultdict[str, dict[str, dict[str, Series]]] = {
         side: {
             user: {
-                session_name: Series(
+                session_name: DataFrame(
                     butter_lowpass_filter_filtfilt(
                         data=session_data,
                         cutoff=cutoff_frequency,
@@ -142,6 +207,7 @@ def main():
                         order=butterworth_order,
                     ),
                     index=session_data.index,
+                    columns=session_data.columns,
                 )
                 for session_name, session_data in user_edat_data.items()
             }
@@ -167,12 +233,34 @@ def main():
     eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
         side: {
             user: {
-                session: Series(
+                session: DataFrame(
                     decomposition(
                         session_data.values,
                         eda_data[side][user][session].attrs["sampling frequency"],
-                    )["phasic component"],
+                    )["phasic component"]
+                    if isinstance(session_data, Series)
+                    else (
+                        stack(
+                            [
+                                decomposition(
+                                    session_data.values,
+                                    eda_data[side][user][session].attrs[
+                                        "sampling frequency"
+                                    ],
+                                )["phasic component"],
+                                session_data[:, 1]
+                                if isinstance(session_data, ndarray)
+                                else session_data.iloc[:, 1],
+                            ],
+                            axis=1,
+                        )
+                    ),
                     index=session_data.index,
+                    columns=(
+                        session_data.columns
+                        if isinstance(session_data, DataFrame)
+                        else None
+                    ),
                 )
                 for session, session_data in tqdm(
                     user_edat_data.items(), desc="Session progress", colour="blue"
@@ -241,7 +329,23 @@ def main():
                         df_to_save: DataFrame = concat(
                             [user_data_standardized, user_data_phasic], axis=1
                         )
-                        df_to_save.columns = ["mixed-EDA", "phasic-EDA"]
+                        if "Artifact" in df_to_save.columns:
+                            aux_res = df_to_save[["Artifact"]].loc[
+                                :, ~df_to_save[["Artifact"]].columns.duplicated()
+                            ]
+                            df_to_save = df_to_save.drop(
+                                columns=["Artifact"], inplace=False
+                            )
+                            df_to_save["Artifact"] = aux_res
+
+                        if len(df_to_save.columns) == 2:
+                            df_to_save.columns = ["mixed-EDA", "phasic-EDA"]
+                        elif len(df_to_save.columns) == 3:
+                            df_to_save.columns = ["mixed-EDA", "phasic-EDA", "Artifact"]
+                        else:
+                            raise RuntimeError(
+                                f"Unexpected number of columns: {len(df_to_save.columns)}"
+                            )
                         # NOTE: I don't need the attributes, since I put all of the sessions together
                         # df_to_save.attrs['sampling rate'] = eda_data[side][user].attrs
                         # if plots and (side == random_side) and (user == random_user):
@@ -259,6 +363,9 @@ def main():
 
                         Path(path_to_save).mkdir(parents=True, exist_ok=True)
 
+                        logger.info(
+                            f'Saving EDA data for user "{user}" in "{path_to_save} to {filename}"'
+                        )
                         df_to_save.to_parquet(
                             join_paths(path_to_save, filename),
                         )
