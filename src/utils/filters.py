@@ -3,7 +3,7 @@
 from distutils.log import warn
 from logging import getLogger
 from typing import Callable
-from numpy import amax, nan, ndarray, pad
+from numpy import amax, nan, ndarray, pad, stack
 from pandas import DataFrame, IndexSlice, Series, array, Index
 from scipy.signal import butter, lfilter, filtfilt
 
@@ -94,7 +94,11 @@ def butter_lowpass_filter_filtfilt(
         ndarray: returns the data filtered
     """
     b, a = butter_lowpass(cutoff, fs, order=order)
-    y: ndarray = filtfilt(b=b, a=a, x=data.values)
+    if isinstance(data, DataFrame):
+        y: ndarray = filtfilt(b=b, a=a, x=data.iloc[:,0].values)
+        y = stack([y, data.iloc[:,1].values], axis=1)
+    elif isinstance(data, Series):
+        y: ndarray = filtfilt(b=b, a=a, x=data.values)
     return y
 
 
@@ -117,8 +121,8 @@ def butter_lowpass_filter_lfilter(
     return y
 
 
-def movin_avg_acc(
-    acc_df: ndarray | DataFrame, window_size: int, index: None | ndarray | Index = None
+def moving_avg_acc(
+    data: ndarray | DataFrame, window_size: int
 ) -> ndarray:
     """Simple method to evaluate the moving average, as performed by Empatica, over the
     ACC signal. Keep in mind that this is mot trully a real moving average, but slightly
@@ -127,7 +131,7 @@ def movin_avg_acc(
 
     Parameters
     ----------
-    acc_df : ndarray | DataFrame
+    data : ndarray | DataFrame
         _description_
     window_size : int
         _description_
@@ -159,14 +163,13 @@ def movin_avg_acc(
     as per [empatica](https://support.empatica.com/hc/en-us/articles/202028739-How-is-the-acceleration-data-formatted-in-E4-connect-).
     Indeed, the arrays :math:`x_t`, :math:`y_t` and :math:`z_t` are of length :math:`M`.
     """
-    if isinstance(acc_df, DataFrame):
+    if isinstance(data, DataFrame):
         # warn(f'acc_data is a DataFrame. Converting to ndarray.')
-        acc_df: ndarray = acc_df.dropna(how="all")
-        acc_data: ndarray = acc_df.values
-        if index is None:
-            index: Index = acc_df.index.get_level_values(level=1)
-    elif isinstance(acc_df, ndarray):
-        acc_data: ndarray = acc_df
+        data: ndarray = data.dropna(how="all")
+        acc_data: ndarray = data.values
+    elif isinstance(data, ndarray):
+        # acc_data: ndarray = acc_df
+        pass
     else:
         raise TypeError(f"acc_data is not a ndarray or DataFrame.")
 
@@ -191,6 +194,5 @@ def movin_avg_acc(
     logger.debug(
         f"Lenght of avg filteres after padding: {len(avgs)}; lengths of inout data: {len(acc_data)}"
     )
-    logger.debug(f"Length of index: {len(index)}")
 
-    return DataFrame(avgs, index=index, columns=["ACC_filt"])
+    return avgs

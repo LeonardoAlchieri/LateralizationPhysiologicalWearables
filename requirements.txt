@@ -1,6 +1,7 @@
 git+https://github.com/LeonardoAlchieri/pandas.git@attrs_in_parquet_metadata
 git+https://github.com/LeonardoAlchieri/cvxEDA.git
 git+https://github.com/LeonardoAlchieri/affect-size.git
+git+https://github.com/LeonardoAlchieri/EDArtifact.git@topic/pip-installable
 # Leonardo's branch, with to_perquet modifications -> still not accepted by main pandas
 pre-commit
 pyarrow # alternatively, fastparquet

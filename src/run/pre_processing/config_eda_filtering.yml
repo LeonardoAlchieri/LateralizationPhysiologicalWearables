@@ -10,3 +10,7 @@ mode: 1
 device: "E4"
 concat_sessions: True
 subset_data: False
+artefact_detection: 2 # if 0, no detection. If 1, using Gashi's method. 
+# If 2, using an ACC-based method. For 2, ACC filtered data is needed.
+acc_data_path: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
+

@@ -3,8 +3,9 @@ from collections import defaultdict
 from logging import getLogger
 from typing import Callable
 
-from numpy import array, ndarray
-from pandas import Series, concat
+from joblib import Parallel, delayed
+from numpy import array, ndarray, stack, nanmean, nanstd
+from pandas import Series, concat, DataFrame
 from tqdm import tqdm
 
 from src.utils import prepare_data_for_concatenation
@@ -13,7 +14,8 @@ logger = getLogger("pre_processing")
 
 
 def concate_session_data(
-    data_dict: defaultdict[str, dict[str, dict[str, Series]]], progress: bool = False) -> dict[str, dict[str, Series]]:
+    data_dict: defaultdict[str, dict[str, dict[str, Series]]], n_jobs: int = 1
+) -> dict[str, dict[str, Series]]:
     """Concatenate data from different sessions for each user.
 
     Args:
@@ -22,27 +24,59 @@ def concate_session_data(
     Returns:
         dict[str, dict[str, Series]]: [description]
     """
-    data_dict: defaultdict[str, dict[str, Series]] = {
-        side: {
-            user: concat(
-                [
-                    prepare_data_for_concatenation(
-                        data=data_dict[side][user][session], session_name=session
-                    )
-                    for session in data_dict[side][user].keys()
-                ],
-                axis=0,
-                join="outer",
-            ).sort_index()
-            for user in tqdm(data_dict[side].keys(), desc=f'Concatenating user data for side {side}', colour='green') if len(data_dict[side][user]) > 0
+    if n_jobs == 1:
+        data_dict: defaultdict[str, dict[str, Series]] = {
+            side: {
+                user: concat(
+                    [
+                        prepare_data_for_concatenation(
+                            data=data_dict[side][user][session], session_name=session
+                        )
+                        for session in data_dict[side][user].keys()
+                    ],
+                    axis=0,
+                    join="outer",
+                ).sort_index()
+                for user in tqdm(
+                    data_dict[side].keys(),
+                    desc=f"Concatenating user data for side {side}",
+                    colour="green",
+                )
+                if len(data_dict[side][user]) > 0
+            }
+            for side in data_dict.keys()
         }
-        for side in data_dict.keys()
-    }
+    elif n_jobs > 1 or n_jobs == -1:
+        data_dict: defaultdict[str, dict[str, Series]] = {
+            side: {
+                user: concat(
+                    Parallel(n_jobs=n_jobs)(
+                        delayed(prepare_data_for_concatenation)(
+                            data=data_dict[side][user][session], session_name=session
+                        )
+                        for session in data_dict[side][user].keys()
+                    ),
+                    axis=0,
+                    join="outer",
+                ).sort_index()
+                for user in tqdm(
+                    data_dict[side].keys(),
+                    desc=f"Concatenating user data for side {side}",
+                    colour="green",
+                )
+                if len(data_dict[side][user]) > 0
+            }
+            for side in data_dict.keys()
+        }
+    else:
+        raise ValueError(f"Invalid value for n_jobs: {n_jobs} (must be >= 1 or -1)")
     return data_dict
 
 
 def rescaling(
-    data: defaultdict[str, dict[str, dict[str, Series]]], rescaling_method: Callable
+    data: defaultdict[str, dict[str, dict[str, Series]]],
+    rescaling_method: Callable,
+    n_jobs: int = 1,
 ) -> defaultdict[str, dict[str, dict[str, Series]]]:
     """Rescale data using the specified method.
 
@@ -53,19 +87,72 @@ def rescaling(
     Returns:
         defaultdict[str, dict[str, dict[str, Series]]]: rescaled data
     """
-    data: defaultdict[str, dict[str, Series]] = {
-        side: {
-            user: {
-                session: Series(
-                    rescaling_method(data[side][user][session]),
-                    index=data[side][user][session].index,
+    # TODO: do this using a decorator function
+    if n_jobs == 1:
+        data: defaultdict[str, dict[str, DataFrame]] = {
+            side: {
+                user: {
+                    session: DataFrame(
+                        rescaling_method(data[side][user][session])
+                        if isinstance(data[side][user][session], Series)
+                        else stack(
+                            [
+                                rescaling_method(data[side][user][session].iloc[:, 0]),
+                                data[side][user][session].iloc[:, 1].values,
+                            ],
+                            axis=1,
+                        ),
+                        index=data[side][user][session].index,
+                        columns=data[side][user][session].columns if isinstance(data[side][user][session], DataFrame) else None
+                    )
+                    for session in data[side][user].keys()
+                }
+                for user in tqdm(
+                    data[side].keys(),
+                    desc=f"Rescaling data for side {side}",
+                    colour="blue",
                 )
-                for session in data[side][user].keys()
             }
-            for user in data[side].keys()
+            for side in data.keys()
         }
-        for side in data.keys()
-    }
+    elif n_jobs > 1 or n_jobs == -1:
+
+        def support_rescaling(session: str, session_data: DataFrame):
+            return (
+                session,
+                DataFrame(
+                    rescaling_method(session_data.iloc[:, 0].values),
+                    index=session_data.index,
+                    columns=session_data.columns,
+                ),
+            )
+
+        data = {
+            side: {
+                user: Parallel(n_jobs=n_jobs)(
+                    delayed(support_rescaling)(session, data[side][user][session])
+                    for session in data[side][user].keys()
+                )
+                for user in tqdm(
+                    data[side].keys(),
+                    desc=f"Rescaling data for side {side}",
+                    colour="blue",
+                )
+            }
+            for side in data.keys()
+        }
+        data = {
+            side: {
+                user: {
+                    session_name: session_data
+                    for (session_name, session_data) in user_acct_data
+                }
+                for user, user_acct_data in data[side].items()
+            }
+            for side in data.keys()
+        }
+    else:
+        raise ValueError(f"Invalid value for n_jobs: {n_jobs} (must be >= 1 or -1)")
     return data
 
 
@@ -84,5 +171,6 @@ def standardize(eda_signal: Series | ndarray | list) -> ndarray:
         returns an array standardized
     """
     y: ndarray = array((eda_signal))
-    yn: ndarray = (y - y.mean()) / y.std()
+
+    yn: ndarray = (y - nanmean(y)) / nanstd(y)
     return yn
