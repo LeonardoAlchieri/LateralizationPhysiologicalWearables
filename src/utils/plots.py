@@ -93,6 +93,8 @@ def make_lineplot(
                     plot(data, label=which)
                 elif isinstance(data, DataFrame):
                     for i, column in enumerate(data.columns):
+                        if isinstance(column, int):
+                            column = which
                         if which in column[-1]:
                             data_to_plot = data[column].dropna()
                             plot(
@@ -280,11 +282,28 @@ def correlation_heatmap_plot(
     )
 
 
-def plot_heatmap_boxplot(data: dict, signal: str, measure_name: str = "", **kwargs):
-    df_to_save: Series = Series(data)
-    df_to_save: DataFrame = DataFrame(df_to_save, columns=[measure_name]).sort_index().T
+def plot_heatmap_boxplot(
+    data: dict,
+    signal: str,
+    data_name: str = "",
+    measure_name: str = "",
+    nested: bool = False,
+    **kwargs,
+):
+    if nested:
+        reform = {
+            (outerKey, innerKey): values
+            for outerKey, innerDict in data.items()
+            for innerKey, values in innerDict.items()
+        }
+        df_to_save = DataFrame.from_dict(reform).stack(level=1, dropna=False).T
+    else:
+        df_to_save: Series = Series(data)
+        df_to_save: DataFrame = (
+            DataFrame(df_to_save, columns=[measure_name]).sort_index().T
+        )
 
-    figure(figsize=(30, 1))
+    figure(figsize=(len(df_to_save.columns), 1))
     heatmap(
         df_to_save,
         xticklabels=df_to_save.columns,
@@ -296,13 +315,16 @@ def plot_heatmap_boxplot(data: dict, signal: str, measure_name: str = "", **kwar
         annot=True,
     )
     title(f"{measure_name} per user (signal)")
-    savefig(f"../visualizations/user_{measure_name}_{signal}.pdf", bbox_inches="tight")
+    savefig(
+        f"../visualizations/user_{measure_name}_{signal}_{data_name}.pdf",
+        bbox_inches="tight",
+    )
     show()
 
     boxplot(x=df_to_save.iloc[0, :])
     title(f"{measure_name} per user ({signal})")
     savefig(
-        f"../visualizations/user_{measure_name}_boxplot_{signal}.pdf",
+        f"../visualizations/user_{measure_name}_boxplot_{signal}_{data_name}.pdf",
         bbox_inches="tight",
     )
     show()

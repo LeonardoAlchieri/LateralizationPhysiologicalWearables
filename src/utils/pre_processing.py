@@ -103,7 +103,7 @@ def rescaling(
                             axis=1,
                         ),
                         index=data[side][user][session].index,
-                        columns=data[side][user][session].columns,
+                        columns=data[side][user][session].columns if isinstance(data[side][user][session], DataFrame) else None
                     )
                     for session in data[side][user].keys()
                 }

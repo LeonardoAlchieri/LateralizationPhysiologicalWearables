@@ -167,7 +167,8 @@ def main():
 
     # NOTE: segmentation over the experiment time has to happen after the
     # timestamp is made as index, since it is required for the segmentation
-    eda_data = segment_over_experiment_time(eda_data, experiment_time)
+    if experiment_time is not None:
+        eda_data = segment_over_experiment_time(eda_data, experiment_time)
     eda_data = remove_empty_sessions(eda_data)
 
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
