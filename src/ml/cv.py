@@ -1,3 +1,5 @@
+from typing import Callable
+
 import pandas as pd
 from joblib import Parallel, delayed
 from lazypredict.Supervised import LazyClassifier
@@ -9,6 +11,16 @@ from sklearn.model_selection import StratifiedKFold
 from tqdm.auto import tqdm
 
 from src.ml import resampling
+
+
+def run_fold(
+    train_index, test_index, x_resampled, y_resampled, random_state_classifier
+):
+    x_train, x_test = x_resampled[train_index], x_resampled[test_index]
+    y_train, y_test = y_resampled[train_index], y_resampled[test_index]
+    clf = LazyClassifier(predictions=True, random_state=random_state_classifier)
+    models, _ = clf.fit(x_train, x_test, y_train, y_test)
+    return models
 
 
 def run_cross_validation_prediction(
@@ -101,19 +113,30 @@ def run_cross_validation_prediction(
                 n_splits=n_fols, random_state=random_state_folds, shuffle=True
             ).split(x_resampled, y_resampled)
 
-            def run_fold(train_index, test_index):
-                x_train, x_test = x_resampled[train_index], x_resampled[test_index]
-                y_train, y_test = y_resampled[train_index], y_resampled[test_index]
-                clf = LazyClassifier(
-                    predictions=True, random_state=random_state_classifier
+            custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
+            if custom_method is None:
+                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
+                    delayed(run_fold)(
+                        train_index,
+                        test_index,
+                        x_resampled,
+                        y_resampled,
+                        random_state_classifier,
+                    )
+                    for train_index, test_index in folds
                 )
-                models, _ = clf.fit(x_train, x_test, y_train, y_test)
-                return models
-
-            all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
-                delayed(run_fold)(train_index, test_index)
-                for train_index, test_index in folds
-            )
+            else:
+                custom_method: Callable
+                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
+                    delayed(custom_method)(
+                        train_index,
+                        test_index,
+                        x_resampled,
+                        y_resampled,
+                        random_state_classifier,
+                    )
+                    for train_index, test_index in folds
+                )
             all_results.append(all_models)
 
             averages = (
