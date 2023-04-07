@@ -2,6 +2,7 @@ from collections import defaultdict
 from glob import glob
 from logging import getLogger
 from typing import Any
+from warnings import warn
 
 from pandas import (
     DataFrame,
@@ -340,9 +341,21 @@ def load_processed_data(
         side_name = file.split("/")[-3]
         user_name = file.split("/")[-1].split(".")[0]
         if file_format == "parquet":
-            data[side_name][user_name] = read_parquet(file)
+            loaded_df = read_parquet(file)
+            if not loaded_df.empty:
+                data[side_name][user_name] = loaded_df
+            else:
+                warn(
+                    f"The data loaded for side {side_name} and user {user_name} is empty", RuntimeWarning
+                )
         elif file_format == "csv":
-            data[side_name][user_name] = read_csv(file, index_col=0, header=[0])
+            loaded_df = read_csv(file, index_col=0, header=[0])
+            if not loaded_df.empty:
+                data[side_name][user_name] = loaded_df
+            else:
+                warn(
+                    f"The data loaded for side {side_name} and user {user_name} is empty", RuntimeWarning
+                )
         elif file_format == "pickle":
             raise NotImplementedError(f"File format {file_format} not implemented yet.")
         elif file_format == "json":
@@ -359,6 +372,7 @@ def load_processed_data(
 
 def read_experiment_info(path: str, mode: int = 1) -> DataFrame:
     if mode == 1:
+
         def move_event_to_columns(df):
             starts = {}
             ends = {}
@@ -367,24 +381,24 @@ def read_experiment_info(path: str, mode: int = 1) -> DataFrame:
                 ends[f"end_{event}"] = df.loc[IndexSlice[:, event], "end"].values
             return DataFrame({**starts, **ends})
 
-        experiment_info = read_csv(
-            path, index_col=[0, 1]
-        )
+        experiment_info = read_csv(path, index_col=[0, 1])
         indexes_to_drop = [
             idx
             for idx in experiment_info.index
             if "baseline" not in idx[1] and "cognitive_load" not in idx[1]
         ]
         experiment_info = experiment_info.drop(indexes_to_drop, inplace=False)
-        experiment_info = experiment_info.groupby(axis=0, level=0, group_keys=True).apply(
-            move_event_to_columns
-        )
+        experiment_info = experiment_info.groupby(
+            axis=0, level=0, group_keys=True
+        ).apply(move_event_to_columns)
         experiment_info.index = experiment_info.index.droplevel(1)
         experiment_info = experiment_info.applymap(to_datetime)
-        experiment_info = experiment_info.applymap(lambda x: x.tz_localize("Europe/Rome"))
+        experiment_info = experiment_info.applymap(
+            lambda x: x.tz_localize("Europe/Rome")
+        )
     elif mode == 2:
-        raise NotImplementedError(f'Mode {mode} not implemented yet.')
+        raise NotImplementedError(f"Mode {mode} not implemented yet.")
     else:
-        raise ValueError(f'Mode {mode} not recognized.')
-    
+        raise ValueError(f"Mode {mode} not recognized.")
+
     return experiment_info

@@ -129,3 +129,6 @@ class ExperimentInfo:
             participant: self.data.loc[participant, :]
             for participant in list(self.data.index.unique())
         }
+
+    def to_df(self) -> DataFrame:
+        return self.data

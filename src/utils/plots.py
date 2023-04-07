@@ -6,17 +6,20 @@ from pathlib import Path
 from matplotlib.axes import SubplotBase
 from matplotlib.patches import Patch
 from matplotlib.pyplot import close, cm, figure
-from matplotlib.pyplot import legend
 from matplotlib.pyplot import legend as make_legend
 from matplotlib.pyplot import plot, savefig, show, style, subplots
-from matplotlib.pyplot import title
 from matplotlib.pyplot import title as figtitle
 from matplotlib.pyplot import xlabel, xticks, ylabel
 from numpy import asarray, mean, ndarray, std, unique
 from pandas import DataFrame, IndexSlice, Series, Timestamp, to_datetime
-from seaborn import boxplot, heatmap, set
-from tqdm.auto import tqdm
-from tqdm.notebook import tqdm
+from seaborn import (
+    barplot,
+    boxplot,
+    heatmap,
+    set_context,
+    set_theme,
+    set as set_seaborn,
+)
 
 
 def bland_altman_plot(
@@ -134,7 +137,7 @@ def statistical_test_plot(
     test_name: str = "Wilcoxon",
     threshold: float = 0.05,
 ) -> None:
-    set(font_scale=1.8)
+    set_seaborn(font_scale=1.8)
     df_to_save = test_results.iloc[:, 2].unstack(level=1)
     cmap = cm.coolwarm
     figure(figsize=(24, 5))
@@ -153,12 +156,12 @@ def statistical_test_plot(
     xticks(rotation=30, ha="right")
     xlabel("Feature")
     ylabel("Event")
-    title(f"P values of {test_name} test for {signal_name} features")
+    figtitle(f"P values of {test_name} test for {signal_name} features")
     custom_handles = [
         Patch(facecolor=cmap(0.0), edgecolor=cmap(0.0), label="Non Significant"),
         Patch(facecolor=cmap(1.0), edgecolor=cmap(1.0), label="Significant"),
     ]
-    legend(
+    make_legend(
         handles=custom_handles,
         bbox_to_anchor=(1.253, 1.05),
         title=f"P value significance ({threshold} threshold)",
@@ -176,7 +179,7 @@ def cliff_delta_plot(
     path_to_save: str = "./visualizations/",
 ) -> None:
     cmap = cm.coolwarm
-    set(font_scale=2.89)
+    set_seaborn(font_scale=2.89)
     figure(figsize=(13, 9))
     ax = heatmap(
         cliff_delta_bins,
@@ -194,7 +197,7 @@ def cliff_delta_plot(
     xticks(rotation=30, ha="right")
     xlabel("Feature")
     ylabel("Event")
-    title(
+    figtitle(
         f"Cliff Delta values ({signal_name.replace('_filt', '').replace('_', ' ')})",
         fontsize=40,
     )
@@ -247,7 +250,7 @@ def cliff_delta_plot(
         return labels
 
     custom_handles = make_custom_handles(bins=cliff_delta_bins, cmap=cmap)
-    legend(
+    make_legend(
         handles=custom_handles,
         bbox_to_anchor=(1.75, 1.05),
         title="Cliff Delta effect (dominant side)",
@@ -261,7 +264,7 @@ def cliff_delta_plot(
 def correlation_heatmap_plot(
     data: DataFrame, signal_name: str, path_to_save: str = "./visualizations/"
 ) -> None:
-    set(font_scale=1.6)
+    set_seaborn(font_scale=1.6)
     figure(figsize=(7, 5))
     ax = heatmap(
         data,
@@ -275,7 +278,7 @@ def correlation_heatmap_plot(
     )
     ax.tick_params(left=True, bottom=True)
     ax.set_ylabel("Event")
-    title(
+    figtitle(
         f"Correlation coefficient per event ({signal_name.replace('_filt', '').replace('_', ' ')})",
         fontsize=20,
     )
@@ -317,7 +320,7 @@ def plot_heatmap_boxplot(
         yticklabels=df_to_save.index,
         annot=True,
     )
-    title(f"{measure_name} per user (signal)")
+    figtitle(f"{measure_name} per user (signal)")
     savefig(
         f"../visualizations/user_{measure_name}_{signal}_{data_name}.pdf",
         bbox_inches="tight",
@@ -325,7 +328,7 @@ def plot_heatmap_boxplot(
     show()
 
     boxplot(x=df_to_save.iloc[0, :])
-    title(f"{measure_name} per user ({signal})")
+    figtitle(f"{measure_name} per user ({signal})")
     savefig(
         f"../visualizations/user_{measure_name}_boxplot_{signal}_{data_name}.pdf",
         bbox_inches="tight",
@@ -340,8 +343,11 @@ def make_biometrics_plots_together_matplotlib(
     dataset: str,
     experiment_info: DataFrame,
     subset_data: bool = False,
+    output_folder: str = "./visualizations/",
     **kwargs,
 ) -> None:
+    set_context("paper")
+
     data = {key: val for key, val in data.items() if val is not None}
     fig, axs = subplots(
         len(data.keys()), 1, figsize=(14, 11 * len(data.keys())), sharex=True
@@ -349,9 +355,7 @@ def make_biometrics_plots_together_matplotlib(
     if len(data.keys()) == 1:
         axs = [axs]
 
-    for n, (data_type, physiological_data) in tqdm(
-        enumerate(data.items()), desc="Plotting data", total=len(data.keys())
-    ):
+    for n, (data_type, physiological_data) in enumerate(data.items()):
         if physiological_data is None:
             continue
 
@@ -430,7 +434,46 @@ def make_biometrics_plots_together_matplotlib(
         fontsize=30,
         y=0.97,
     )
-    savefig(f"../visualizations/{dataset}_{user_id}_{session_id}.pdf")
+    output_path = join_paths(output_folder, f"{dataset}_{user_id}_{session_id}.pdf")
+    savefig(output_path)
     close()
 
     return start_exp, end_exp
+
+
+set_theme()
+set_context("paper")
+
+
+def with_hue(ax, feature, Number_of_categories, hue_categories):
+    a = [p.get_height() for p in ax.patches]
+    patch = [p for p in ax.patches]
+    k = 0
+    for i in range(Number_of_categories):
+        for j in range(hue_categories):
+            x = (
+                patch[(j * Number_of_categories + i)].get_x()
+                + patch[(j * Number_of_categories + i)].get_width() / 2
+            )
+            y = (
+                patch[(j * Number_of_categories + i)].get_y()
+                + patch[(j * Number_of_categories + i)].get_height()
+            )
+            ax.annotate("%.2f%%" % (feature.iloc[k]), (x, y), ha="center")
+            k += 1
+
+
+def plot_binary_labels(counts: DataFrame, title: str, dataset_name: str, output_folder: str = './visualizations/'):
+    set_seaborn(font_scale=1.3)
+    ax1 = barplot(data=counts, x="side", y="count", hue="label")
+
+    percentages = counts.groupby("side", group_keys=True)["count"].apply(
+        lambda x: x / x.sum() * 100
+    )
+    with_hue(ax1, percentages, 2, 2)
+
+    figtitle(title, fontsize=18)
+    make_legend(bbox_to_anchor=(0.9, 1), loc="upper left", borderaxespad=0)
+    output_path = join_paths(output_folder, f"label_distribution_{dataset_name}.pdf")
+    savefig(output_path)
+    show()
