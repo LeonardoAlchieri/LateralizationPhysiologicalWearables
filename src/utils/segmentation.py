@@ -3,22 +3,42 @@ from tqdm.auto import tqdm
 from pandas import Timedelta, Timestamp, DataFrame, IndexSlice, Series
 from typing import Literal
 
+from src.utils.misc import get_all_sessions
 
-def get_session_moment(start: Timestamp, end: Timestamp, info: Series) -> int | float:
+
+def get_session_moment(
+    start: Timestamp, end: Timestamp, info: Series, mode: int = 1
+) -> int | float:
     # TODO: check that this is working as expected
     # this method gives 0 if the person is awake and 1 if the person is
-    if (end < info["end_baseline_1"]) or (
-        (start < info["end_baseline_1"] and end > info["end_baseline_1"])
-    ):
-        return 0
-    elif (
-        (start > info["end_baseline_1"] and end < info["start_cognitive_load"])
-        or (start > info["end_cognitive_load"])
-        or (start < info["start_cognitive_load"] and end > info["start_cognitive_load"])
-    ):
-        return nan
-    else:
-        return 1
+    if mode == 1:
+        if (end < info["end_baseline_1"]) or (
+            (start < info["end_baseline_1"] and end > info["end_baseline_1"])
+        ):
+            return 0
+        elif (
+            (start > info["end_baseline_1"] and end < info["start_cognitive_load"])
+            or (start > info["end_cognitive_load"])
+            or (
+                start < info["start_cognitive_load"]
+                and end > info["start_cognitive_load"]
+            )
+        ):
+            return nan
+        else:
+            return 1
+    elif mode == 2:
+        # this method gives 0 if the person is awake and 1 if the person is
+        if (start < info["actual_bed_time"] and end < info["actual_bed_time"]) or (
+            start > info["wake_up_time"] and end > info["wake_up_time"]
+        ):
+            return 0
+        elif (start < info["actual_bed_time"] and end > info["actual_bed_time"]) or (
+            start < info["wake_up_time"] and end > info["wake_up_time"]
+        ):
+            return nan
+        else:
+            return 1
 
 
 def organize_segmented_data(
@@ -79,6 +99,8 @@ def segment(
     segment_size_in_sampling_rate: int,
     segment_size_in_secs: int,
     data_sample_rate: int,
+    # sessions_all: list[str] | None = ["experiment"],
+    mode: int = 1,
 ):
     data_segmented_left: list[tuple] = []
     data_segmented_right: list[tuple] = []
@@ -91,12 +113,18 @@ def segment(
 
         # FIXME: using sessions like this seems stupid, but allows to reuse code
         # from the other experiment. I should however find a way around it
-        sessions_all = ["experiment"]
+        sessions_all = get_all_sessions(
+                user_data_left=data_left, user_data_right=data_right
+            )
+
         for session in sessions_all:
             session_data_left: DataFrame = data_left.loc[IndexSlice[session, :], :]
             session_data_right: DataFrame = data_right.loc[IndexSlice[session, :], :]
 
-            session_info = info
+            if sessions_all == ["experiment"]:
+                session_info = info
+            else:
+                session_info = info.loc[IndexSlice[user, session]]
 
             starts_left = session_data_left[
                 ::segment_size_in_sampling_rate
@@ -126,7 +154,7 @@ def segment(
                         IndexSlice[session, start:end],
                         "mixed-EDA",
                     ].values,
-                    get_session_moment(start, end, session_info),
+                    get_session_moment(start, end, session_info, mode),
                     user,
                 )
                 for start, end in zip(starts_left, ends_left)
@@ -137,7 +165,7 @@ def segment(
                         IndexSlice[session, start:end],
                         "mixed-EDA",
                     ].values,
-                    get_session_moment(start, end, session_info),
+                    get_session_moment(start, end, session_info, mode),
                     user,
                 )
                 for start, end in zip(starts_right, ends_right)

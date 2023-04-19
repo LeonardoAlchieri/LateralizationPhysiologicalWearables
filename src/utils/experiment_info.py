@@ -1,7 +1,8 @@
 from copy import deepcopy
+from warnings import warn
 
 from numpy import nan
-from pandas import DataFrame, MultiIndex, concat, to_datetime, Series
+from pandas import DataFrame, MultiIndex, concat, to_datetime, Series, IndexSlice
 
 from src.utils import (
     INTENSITIES_MAPPING,
@@ -123,12 +124,37 @@ def add_laughter_to_experiment_info(
 class ExperimentInfo:
     def __init__(self, path: str, mode: int = 1):
         self.data = read_experiment_info(path, mode)
+        self.mode = mode
+        self.path = path
 
     def to_dict(self) -> dict[str, Series]:
-        return {
-            participant: self.data.loc[participant, :]
-            for participant in list(self.data.index.unique())
-        }
+        if self.mode == 2:
+            return {
+                participant: self.data.loc[IndexSlice[participant, :], :]
+                for participant in list(self.data.index.get_level_values(0).unique())
+            }
+        elif self.mode == 1:
+            return {
+                participant: self.data.loc[participant, :]
+                for participant in list(self.data.index.unique())
+            }
+        else:
+            raise ValueError(f"Mode must be 1 or 2. Got {self.mode}")
 
     def to_df(self) -> DataFrame:
         return self.data
+
+    def filter_correct_times(self, inplace: bool = False) -> DataFrame | None:
+        if self.mode == 2:
+            self.data[self.data["actual_bed_time"] < self.data["wake_up_time"]]
+        elif self.mode == 1:
+            warn("This method is not implemented for mode 1", RuntimeWarning)
+        else:
+            raise ValueError(f"Mode must be 1 or 2. Got {self.mode}")
+
+        if not inplace:
+            return self.data
+        
+    def get_mode(self) -> int:
+        return self.mode
+        

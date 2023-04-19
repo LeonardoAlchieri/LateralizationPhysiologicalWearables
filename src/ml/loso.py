@@ -62,12 +62,14 @@ def train_score_single_model(
     test_labels: ndarray = y_test[test_data_mark]
     clf = ml_model(predictions=True, random_state=classifier_seed)
 
+    models: DataFrame
     models, _ = clf.fit(
         X_train=train_data,
         X_test=test_data,
         y_train=train_labels,
         y_test=test_labels,
     )
+    models.columns.name = user
     return models
 
 
@@ -264,6 +266,27 @@ def under_sampling(
     resampling_method: Callable,
     random_state: int = 42,
 ) -> tuple[ndarray, ndarray, ndarray]:
+    """
+    Perform under-sampling using the given resampling method for each fold in the data.
+
+    Parameters
+    ----------
+    x : ndarray
+        The features of the data.
+    y : ndarray
+        The target labels of the data.
+    folds : ndarray
+        The array indicating which fold each sample belongs to.
+    resampling_method : Callable
+        The callable object used to resample the data for each fold.
+    random_state : int, optional
+        The seed used for the resampling, by default 42.
+
+    Returns
+    -------
+    tuple[ndarray, ndarray, ndarray]
+        A tuple containing the resampled features, target labels, and fold labels.
+    """
     data = DataFrame(x, index=folds)
     data["label"] = y
     data_resampled = data.groupby(axis=0, level=0).apply(
@@ -286,6 +309,32 @@ def run_different_classifications(
     n_jobs: int = -1,
     n_seeds_to_test_classifiers: int = 30,
 ) -> tuple[DataFrame, list[list[DataFrame]]]:
+    """
+    Run multiple iterations of different classifiers on the resampled training and testing data,
+    and return a DataFrame with the average accuracy and standard error of the different models.
+
+    Parameters
+    ----------
+    x_train : ndarray
+        The features of the training data.
+    x_test : ndarray
+        The features of the testing data.
+    y_train : ndarray
+        The target labels of the training data.
+    y_test : ndarray
+        The target labels of the testing data.
+    folds_train : int
+        The number of folds to generate for the training data.
+    folds_test : int
+        The number of folds to generate for the testing data.
+    n_jobs : int
+        The number of CPU cores to use for parallel processing.
+
+    Returns
+    -------
+    DataFrame
+        A DataFrame containing the average accuracy and standard error of the different models.
+    """
     x_train_resampled, y_train_resampled, folds_train_resampled = under_sampling(
         x_train, y_train, folds_train, RandomUnderSampler, random_state=42
     )
@@ -297,7 +346,7 @@ def run_different_classifications(
     # NOTE: we still set a single seed, from which we generate a bunch of other
     # random seeds to be fed to the algorithm
     set_numpy_seed(42)
-    
+
     random_states_classifiers = randint(
         0, int(2**32 - 1), n_seeds_to_test_classifiers
     )

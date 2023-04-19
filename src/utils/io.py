@@ -16,7 +16,8 @@ from pandas import (
 from tqdm.auto import tqdm
 from yaml import safe_load as load_yaml
 
-from src.utils import get_execution_time, make_timestamp_idx
+from src.utils import get_execution_time
+from src.utils.misc import get_all_users, get_all_sessions
 
 logger = getLogger("io")
 
@@ -346,7 +347,8 @@ def load_processed_data(
                 data[side_name][user_name] = loaded_df
             else:
                 warn(
-                    f"The data loaded for side {side_name} and user {user_name} is empty", RuntimeWarning
+                    f"The data loaded for side {side_name} and user {user_name} is empty",
+                    RuntimeWarning,
                 )
         elif file_format == "csv":
             loaded_df = read_csv(file, index_col=0, header=[0])
@@ -354,7 +356,8 @@ def load_processed_data(
                 data[side_name][user_name] = loaded_df
             else:
                 warn(
-                    f"The data loaded for side {side_name} and user {user_name} is empty", RuntimeWarning
+                    f"The data loaded for side {side_name} and user {user_name} is empty",
+                    RuntimeWarning,
                 )
         elif file_format == "pickle":
             raise NotImplementedError(f"File format {file_format} not implemented yet.")
@@ -397,8 +400,51 @@ def read_experiment_info(path: str, mode: int = 1) -> DataFrame:
             lambda x: x.tz_localize("Europe/Rome")
         )
     elif mode == 2:
-        raise NotImplementedError(f"Mode {mode} not implemented yet.")
+        experiment_info = read_csv(path, index_col=[0, 1])
+        experiment_info["actual_bed_time"] = experiment_info["actual_bed_time"].apply(
+            to_datetime
+        )
+        experiment_info["wake_up_time"] = experiment_info["wake_up_time"].apply(
+            to_datetime
+        )
+        experiment_info["actual_bed_time"] = experiment_info[
+            "actual_bed_time"
+        ].dt.tz_localize("Europe/Rome")
+        experiment_info["wake_up_time"] = experiment_info[
+            "wake_up_time"
+        ].dt.tz_localize("Europe/Rome")
     else:
         raise ValueError(f"Mode {mode} not recognized.")
 
     return experiment_info
+
+
+def filter_sleep_nights(
+    data: defaultdict[str, defaultdict[str, Series | DataFrame]],
+    experiment_info: DataFrame,
+):
+    users = get_all_users(data)
+
+    counter = 0
+    for user in tqdm(sorted(users), desc="flitering user progress", colour="red"):
+        sessions_all = get_all_sessions(
+            user_data_left=data["left"][user], user_data_right=data["right"][user]
+        )
+        for session in sessions_all:
+            if (user, session) not in experiment_info.index:
+                counter += 1
+                for side in data.keys():
+                    sessions_to_keep = [
+                        data_ses
+                        for data_ses in data[side][user]
+                        .index.get_level_values(0)
+                        .unique()
+                        if data_ses != session
+                    ]
+                    data[side][user] = data[side][user].loc[
+                        IndexSlice[sessions_to_keep, :], :
+                    ]
+            else:
+                continue
+    print(f"Removed {counter} sessions")
+    return data
