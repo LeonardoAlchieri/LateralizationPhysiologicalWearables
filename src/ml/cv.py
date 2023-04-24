@@ -75,6 +75,7 @@ def run_cross_validation_prediction(
         resampling_method=kwargs.get("resampling_method", None),
         random_state=kwargs.get("resampling_random_state", 42),
     )
+    data_resampled.index = data_resampled.index.droplevel(1)
 
     x_resampled: ndarray = data_resampled.drop(columns=["label"], inplace=False).values
     y_resampled: ndarray = data_resampled["label"].values

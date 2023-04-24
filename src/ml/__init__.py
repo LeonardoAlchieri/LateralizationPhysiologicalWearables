@@ -30,6 +30,10 @@ def resampling(
         resampling_method = RandomUnderSampler
 
     x = df.drop(columns=["label"], inplace=False).values
+    if len(df["label"].unique()) == 1:
+        warn(f'Only one class in the dataset. Removing current user {df.name}', RuntimeWarning)
+        print(f'Only one class in the dataset. Removing current user {df.name}', RuntimeWarning)
+        return None
     y = df["label"].values
     cc = resampling_method(random_state=random_state)
     x_resampled, y_resampled = cc.fit_resample(x, y)
