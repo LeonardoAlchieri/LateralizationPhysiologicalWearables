@@ -11,7 +11,7 @@ from warnings import warn
 
 from joblib import Parallel, delayed
 from pandas import DataFrame, Series, read_csv
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 path.append(".")
 from collections import defaultdict

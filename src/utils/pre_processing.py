@@ -6,7 +6,7 @@ from typing import Callable
 from joblib import Parallel, delayed
 from numpy import array, ndarray, stack, nanmean, nanstd
 from pandas import Series, concat, DataFrame
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from src.utils import prepare_data_for_concatenation
 

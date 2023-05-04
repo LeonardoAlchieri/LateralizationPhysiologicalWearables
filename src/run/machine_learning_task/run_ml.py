@@ -23,7 +23,7 @@ from numpy import isnan
 from sklearn.model_selection import LeaveOneGroupOut
 from numpy import sqrt
 from scipy.stats import ttest_ind_from_stats
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from affect_size.cliff_delta import cliff_delta
 

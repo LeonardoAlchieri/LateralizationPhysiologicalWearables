@@ -13,7 +13,7 @@ from warnings import warn
 from eda_artefact_detection.detection import compute_eda_artifacts
 from numpy import ndarray, stack
 from pandas import DataFrame, IndexSlice, Series, concat, read_csv
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 path.append(".")
 from collections import defaultdict
@@ -41,7 +41,7 @@ logger = getLogger("main")
 @blockPrinting
 def gashis_artefact_detection(
     data: DataFrame | Series,
-    n_jobs: int = 1,
+    # n_jobs: int = 1,
     window_size: int = 4,
     **kwargs,
 ):
@@ -92,6 +92,7 @@ def main():
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
     artefact_detection: int = configs["artefact_detection"]
+    artefact_window_size: int = configs.get("artefact_window_size", None)
 
     if clean_plots:
         files_to_remove = glob("./visualizations/EDA/*.pdf")
@@ -118,14 +119,29 @@ def main():
     )
 
     if subset_data:
+        eda_data_new = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
         warn("Subsetting data to 1000 samples per session.")
+        i = 0
         for side in eda_data.keys():
             for user in eda_data[side].keys():
                 for session in eda_data[side][user].keys():
-                    eda_data[side][user][session] = eda_data[side][user][session][:1000]
+                    eda_data_new[side][user][session] = eda_data[side][user][session]
+                    i += 1
+                    if i == 10:
+                        break
+                if i == 10:
+                        break
+            if i == 10:
+                        break
+        eda_data = eda_data_new
+        del eda_data_new
+                    # [:5000]
 
     if artefact_detection == 1:
-        eda_data = gashis_artefact_detection(data=eda_data, window_size=4, n_jobs=-1)
+        print(f'Using artefact detection method 1.')
+        if artefact_window_size is None:
+            raise ValueError(f'Artefact window size must be provided when using artefact detection method 1.')
+        eda_data = gashis_artefact_detection(data=eda_data, window_size=artefact_window_size, n_jobs=n_jobs)
         # eda_data = perform_artefact_detection(eda_data)
     else:
         eda_data = {
