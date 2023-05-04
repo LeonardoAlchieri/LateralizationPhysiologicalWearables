@@ -459,6 +459,7 @@ def parallel_iteration(func):
         if n_jobs == 1:
 
             def super_func(
+                func: Callable,
                 session_data: DataFrame,
                 side_name,
                 user_name,
@@ -467,12 +468,13 @@ def parallel_iteration(func):
                 **kwargs,
             ):
                 intermediate_res = func(
-                    session_data,
-                    *args,
-                    **kwargs,
+                    func=func,
+                    session_data=session_data,
                     side_name=side_name,
                     user_name=user_name,
                     session_name=session_name,
+                    *args,
+                    **kwargs,
                 )
                 if isinstance(intermediate_res, DataFrame):
                     new_cols = intermediate_res.columns
@@ -489,12 +491,13 @@ def parallel_iteration(func):
                 side: {
                     user: {
                         session_name: super_func(
-                            session_data,
-                            *args,
-                            **kwargs,
+                            func=func,
+                            session_data=session_data,
                             side_name=side,
                             user_name=user,
                             session_name=session_name,
+                            *args,
+                            **kwargs,
                         )
                         for session_name, session_data in user_data.items()
                     }
@@ -509,6 +512,7 @@ def parallel_iteration(func):
         elif n_jobs > 1 or n_jobs == -1:
 
             def super_func(
+                func: Callable,
                 session_data: DataFrame,
                 side_name,
                 user_name,
@@ -518,11 +522,11 @@ def parallel_iteration(func):
             ):
                 intermediate_res = func(
                     session_data,
-                    *args,
-                    **kwargs,
                     side_name=side_name,
                     user_name=user_name,
                     session_name=session_name,
+                    *args,
+                    **kwargs,
                 )
                 if isinstance(intermediate_res, DataFrame):
                     new_cols = intermediate_res.columns
@@ -545,7 +549,7 @@ def parallel_iteration(func):
                     user: Parallel(n_jobs=n_jobs)(
                         delayed(super_func)(
                             func,
-                            session_data,
+                            session_data=session_data,
                             side_name=side,
                             user_name=user,
                             session_name=session_name,
@@ -556,7 +560,7 @@ def parallel_iteration(func):
                     )
                     for user, user_data in tqdm(
                         data[side].items(),
-                        desc=f'Filtering for side "{side}"',
+                        desc=f'Applying method {func.__name__} on side data "{side}"',
                         colour="green",
                     )
                 }
