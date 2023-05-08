@@ -393,12 +393,12 @@ def segment_over_experiment_time(
     """
 
     def auxiliary_selecting_start_end(
-        data: Series,
+        data: DataFrame,
         user_id: str,
         session_id: str,
         n_levels_idx: int,
         selection: str = "start",
-    ) -> Series:
+    ) -> ndarray:
         if n_levels_idx == 1:
             return data.loc[user_id, selection]
         elif n_levels_idx == 2:
@@ -479,7 +479,7 @@ def parallel_iteration(func):
                 if isinstance(intermediate_res, DataFrame):
                     new_cols = intermediate_res.columns
                 else:
-                    new_cols = session_data.columns
+                    new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
 
                 return DataFrame(
                     intermediate_res,
@@ -531,7 +531,7 @@ def parallel_iteration(func):
                 if isinstance(intermediate_res, DataFrame):
                     new_cols = intermediate_res.columns
                 else:
-                    new_cols = session_data.columns
+                    new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
 
                 return (
                     session_name,

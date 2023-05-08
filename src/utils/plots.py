@@ -434,7 +434,10 @@ def make_biometrics_plots_together_matplotlib(
         fontsize=30,
         y=0.97,
     )
-    output_path = join_paths(output_folder, f"{dataset}_{user_id}_{session_id}.pdf")
+    output_path = join_paths(
+        output_folder,
+        f"{kwargs.get('signal_type', None)}_{dataset}_{user_id}_{session_id}.pdf",
+    )
     savefig(output_path)
     close()
 
@@ -463,7 +466,12 @@ def with_hue(ax, feature, Number_of_categories, hue_categories):
             k += 1
 
 
-def plot_binary_labels(counts: DataFrame, title: str, dataset_name: str, output_folder: str = './visualizations/'):
+def plot_binary_labels(
+    counts: DataFrame,
+    title: str,
+    dataset_name: str,
+    output_folder: str = "./visualizations/",
+):
     set_seaborn(font_scale=1.3)
     ax1 = barplot(data=counts, x="side", y="count", hue="label")
 
