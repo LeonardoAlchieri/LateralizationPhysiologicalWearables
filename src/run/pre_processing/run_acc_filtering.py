@@ -162,17 +162,18 @@ def main():
         }
         for side in acc_data.keys()
     }
+    
+    # NOTE: the data here is order this way: {side: {user: session: {Series}}},
+    # ir {side: {user: Series}}, depending on the chosen mode.
+    # Each pandas Series contains also the `attr` field with the
+    # metadata relative to the specific user <-- pretty sure I did
+    # not implement this at the end
     # NOTE: segmentation over the experiment time has to happen after the
     # timestamp is made as index, since it is required for the segmentation
     if experiment_time is not None:
         acc_data = segment_over_experiment_time(acc_data, experiment_time)
     else:
         logger.info(f"No experiment time file provided, skipping segmentation.")
-    # NOTE: the data here is order this way: {side: {user: session: {Series}}},
-    # ir {side: {user: Series}}, depending on the chosen mode.
-    # Each pandas Series contains also the `attr` field with the
-    # metadata relative to the specific user <-- pretty sure I did
-    # not implement this at the end
 
     logger.info("Data loaded correctly.")
     logger.info(f"Number of sides: {len(acc_data.keys())}")
@@ -208,6 +209,7 @@ def main():
     acc_data_standardized = rescaling(
         data=acc_data_filtered, rescaling_method=standardize, n_jobs=n_jobs
     )
+    
 
     if plots:
         make_lineplot(

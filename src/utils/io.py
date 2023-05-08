@@ -126,6 +126,7 @@ def load_and_prepare_data(
     data_type: str | None = None,
     mode: int = 1,
     device: str = "E4",
+    input_format: str = "csv",
 ) -> (
     defaultdict[str, defaultdict[str, dict[str, Series]]]
     | defaultdict[str, dict[str, Series | DataFrame]]
@@ -172,11 +173,11 @@ def load_and_prepare_data(
         logger.info(f"Loading for side {chosen_side}")
         if mode == 1:
             path_current_side_data: list[str] = glob(
-                f"{path_to_main_folder}/*/{chosen_side}/{data_type}.csv"
+                f"{path_to_main_folder}/*/{chosen_side}/{data_type}.{input_format}"
             )
         elif mode == 2:
             path_current_side_data: list[str] = glob(
-                f"{path_to_main_folder}/*/*/{device}/{chosen_side}/{data_type}_*.csv"
+                f"{path_to_main_folder}/*/*/{device}/{chosen_side}/{data_type}_*.{input_format}"
             )
         else:
             raise ValueError(f"Mode not recognized. Got {mode} instead of 1 or 2.")
@@ -187,7 +188,10 @@ def load_and_prepare_data(
             # NOTE: this condition can be tested without casting to list, but it will be
             # slower, for some reason
             if not any([tag in path for tag in tricky_tags]):
-                data_loaded: DataFrame = read_csv(path, header=[0, 1])
+                if input_format == "parquet":
+                    data_loaded: DataFrame = read_parquet(path, header=[0, 1])
+                elif input_format == "csv":
+                    data_loaded: DataFrame = read_csv(path, header=[0, 1])
                 data_loaded.attrs["sampling frequency"] = int(
                     float(data_loaded.columns[0][-1])
                 )

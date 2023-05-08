@@ -28,7 +28,7 @@ from src.utils import (
 )
 from src.utils.eda import decomposition, standardize
 from src.utils.filters import butter_lowpass_filter_filtfilt
-from src.utils.io import load_and_prepare_data, load_config
+from src.utils.io import load_and_prepare_data, load_config, load_processed_data
 from src.utils.plots import make_lineplot
 from src.utils.pre_processing import concate_session_data, rescaling
 
@@ -57,19 +57,30 @@ def gashis_artefact_detection(
 
 @parallel_iteration
 def acc_artefact_detection(
-    data: DataFrame | Series,
     acc_magitude_data: dict[str, dict[str, dict[str, Series | DataFrame]]],
+    session_data: DataFrame | Series,
     n_jobs: int = 1,
     acc_threshold: float = 0.9,
     **kwargs,
 ) -> DataFrame:
     side_name: str = kwargs["side_name"]
     user_name: str = kwargs["user_name"]
-    session_name: str = kwargs["session_name"]
-    current_acc_data: DataFrame = acc_magitude_data[side_name][user_name][session_name]
-    bool_mask = current_acc_data > acc_threshold
-    data["Artifact"] = bool_mask.astype(int)
-    return data
+    if user_name in acc_magitude_data[side_name].keys():
+        current_acc_data: DataFrame = acc_magitude_data[side_name][user_name]
+        bool_mask = current_acc_data > acc_threshold
+        if isinstance(session_data, DataFrame):
+            session_data["Artifact"] = bool_mask.astype(int)
+        elif isinstance(session_data, Series):
+            session_data = session_data.to_frame()
+            session_data.columns = ["EDA"]
+            # FIXME: the acc data has a different sampling rate, and as such I cannot match the indexes
+            # I need to undersample to get the same indices!
+            session_data["Artifact"] = bool_mask.astype(int)
+        else:
+            raise TypeError(f'Unknown data type "{type(session_data)}"')
+    else:
+        pass
+    return session_data
 
 
 def main():
@@ -130,18 +141,22 @@ def main():
                     if i == 10:
                         break
                 if i == 10:
-                        break
+                    break
             if i == 10:
-                        break
+                break
         eda_data = eda_data_new
         del eda_data_new
-                    # [:5000]
+        # [:5000]
 
     if artefact_detection == 1:
-        print(f'Using artefact detection method 1.')
+        print(f"Using artefact detection method 1.")
         if artefact_window_size is None:
-            raise ValueError(f'Artefact window size must be provided when using artefact detection method 1.')
-        eda_data = gashis_artefact_detection(data=eda_data, window_size=artefact_window_size, n_jobs=n_jobs)
+            raise ValueError(
+                f"Artefact window size must be provided when using artefact detection method 1."
+            )
+        eda_data = gashis_artefact_detection(
+            data=eda_data, window_size=artefact_window_size, n_jobs=n_jobs
+        )
         # eda_data = perform_artefact_detection(eda_data)
     else:
         eda_data = {
@@ -154,6 +169,7 @@ def main():
             }
             for side in eda_data.keys()
         }
+
         if artefact_detection == 2:
             acc_data_path: str | None = configs.get("acc_data_path", None)
             if acc_data_path is None:
@@ -161,16 +177,11 @@ def main():
                     f"When using artefact detection 2, acc_data_path must be provided. Received {acc_data_path}"
                 )
             acc_threshold: float = configs.get("acc_threshold", 0.9)
-            acc_data = load_and_prepare_data(
-                path_to_main_folder=acc_data_path,
-                side=None,
-                data_type="ACC",
-                mode=mode,
-                device=device,
-            )
+            acc_data = load_processed_data(path=acc_data_path, file_format="parquet")
+
             eda_data = acc_artefact_detection(
                 data=eda_data,
-                n_jobs=-1,
+                n_jobs=1,
                 acc_magitude_data=acc_data,
                 acc_threshold=acc_threshold,
             )
