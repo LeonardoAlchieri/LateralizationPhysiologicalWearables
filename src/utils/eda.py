@@ -30,12 +30,12 @@ def decomposition(
     """
     if isinstance(eda_signal, Series) or (isinstance(eda_signal, ndarray) and eda_signal.ndim == 1):
         # TODO: see if the standardization is actually something we want!
-        yn = standardize(eda_signal=eda_signal)
+        yn = standardize(signal=eda_signal)
     elif isinstance(eda_signal, DataFrame):
-        yn = standardize(eda_signal=eda_signal.iloc[:, 0])
+        yn = standardize(signal=eda_signal.iloc[:, 0])
     elif isinstance(eda_signal, ndarray) and eda_signal.ndim == 2:
         # TODO: see if the standardization is actually something we want!
-        yn = standardize(eda_signal=eda_signal[:,0])
+        yn = standardize(signal=eda_signal[:,0])
     else:
         raise TypeError(f'eda_signal must be a Series, DataFrame or ndarray, not {type(eda_signal)}')
     return cvxEDA(yn, 1.0 / frequency)

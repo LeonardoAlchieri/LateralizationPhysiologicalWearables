@@ -14,11 +14,15 @@ from src.ml import resampling
 
 
 def run_fold(
-    train_index, test_index, x_resampled, y_resampled, random_state_classifier
+    train_index, test_index, x_resampled, y_resampled, random_state_classifier, **kwargs
 ):
     x_train, x_test = x_resampled[train_index], x_resampled[test_index]
     y_train, y_test = y_resampled[train_index], y_resampled[test_index]
-    clf = LazyClassifier(predictions=True, random_state=random_state_classifier)
+    clf = LazyClassifier(
+        predictions=True,
+        random_state=random_state_classifier,
+        classifiers=kwargs.get("classifiers", "all"),
+    )
     models, _ = clf.fit(x_train, x_test, y_train, y_test)
     return models
 
@@ -123,6 +127,7 @@ def run_cross_validation_prediction(
                         x_resampled,
                         y_resampled,
                         random_state_classifier,
+                        classifiers=kwargs.get("classifiers", "all"),
                     )
                     for train_index, test_index in folds
                 )
