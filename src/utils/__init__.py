@@ -468,8 +468,8 @@ def parallel_iteration(func):
                 **kwargs,
             ):
                 intermediate_res = func(
-                    func=func,
-                    session_data=session_data,
+                    # func=func,
+                    session_data,
                     side_name=side_name,
                     user_name=user_name,
                     session_name=session_name,
@@ -477,15 +477,18 @@ def parallel_iteration(func):
                     **kwargs,
                 )
                 if isinstance(intermediate_res, DataFrame):
-                    new_cols = intermediate_res.columns
+                    # new_cols = intermediate_res.columns
+                    intermediate_res.attrs = session_data.attrs
+                    return intermediate_res
                 else:
-                    new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
+                #     new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
+                    raise NotImplementedError("Not implemented yet when the output is not a DataFrame")
 
-                return DataFrame(
-                    intermediate_res,
-                    index=session_data.index,
-                    columns=new_cols if isinstance(session_data, DataFrame) else None,
-                )
+                # return DataFrame(
+                #     intermediate_res,
+                #     index=session_data.index,
+                #     columns=new_cols if isinstance(session_data, DataFrame) else None,
+                # )
 
             results = {
                 side: {
@@ -529,20 +532,23 @@ def parallel_iteration(func):
                     **kwargs,
                 )
                 if isinstance(intermediate_res, DataFrame):
-                    new_cols = intermediate_res.columns
+                    # new_cols = intermediate_res.columns
+                    intermediate_res.attrs = session_data.attrs
+                    return (session_name, intermediate_res,)
                 else:
-                    new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
+                #     new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
+                    raise NotImplementedError("Not implemented yet when the output is not a DataFrame")
 
-                return (
-                    session_name,
-                    DataFrame(
-                        intermediate_res,
-                        index=session_data.index,
-                        columns=new_cols
-                        if isinstance(session_data, DataFrame)
-                        else None,
-                    ),
-                )
+                # return (
+                #     session_name,
+                #     DataFrame(
+                #         intermediate_res,
+                #         index=session_data.index,
+                #         columns=new_cols
+                #         if isinstance(session_data, DataFrame)
+                #         else None,
+                #     ),
+                # )
 
             results = {
                 side: {

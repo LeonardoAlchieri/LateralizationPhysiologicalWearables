@@ -140,6 +140,7 @@ def run_cross_validation_prediction(
                         x_resampled,
                         y_resampled,
                         random_state_classifier,
+                        classifiers=kwargs.get("classifiers", "all"),
                     )
                     for train_index, test_index in folds
                 )

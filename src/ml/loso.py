@@ -138,9 +138,17 @@ def LOSO(
     list
         A list of DataFrames with the scores for each user.
     """
+    custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
+    method_to_train: Callable
+    if custom_method is None:
+        method_to_train = train_score_single_model
+    else:
+        # NOTE: the custom method should have a specific input
+        method_to_train = custom_method
+        
     if n_jobs == 1:
         scores = [
-            train_score_single_model(
+            method_to_train(
                 groups_train=groups_train,
                 groups_test=groups_test,
                 x_train=x_train,
@@ -158,7 +166,7 @@ def LOSO(
         ]
     else:
         scores = Parallel(n_jobs=n_jobs)(
-            delayed(train_score_single_model)(
+            delayed(method_to_train)(
                 groups_train=groups_train,
                 groups_test=groups_test,
                 x_train=x_train,
@@ -244,6 +252,7 @@ def run_same_side_classifications(
             classifiers=kwargs.get("classifiers", "all"),
             augment_data=kwargs.get("augment_data", False),
             augmentation_params=kwargs.get("augmentation_params", None),
+            custom_fold_run_method=kwargs.get("custom_fold_run_method", None),
         )
         all_results.append(all_models)
 

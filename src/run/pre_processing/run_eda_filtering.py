@@ -12,7 +12,7 @@ from warnings import warn
 
 from eda_artefact_detection.detection import compute_eda_artifacts
 from numpy import ndarray, stack
-from pandas import DataFrame, IndexSlice, Series, concat, read_csv
+from pandas import DataFrame, IndexSlice, Series, concat, read_csv, RangeIndex
 from tqdm.auto import tqdm
 
 path.append(".")
@@ -49,7 +49,7 @@ def gashis_artefact_detection(
     window_size: int = 4,
     **kwargs,
 ):
-    return compute_eda_artifacts(
+    data_w_artifacts = compute_eda_artifacts(
         data=data,
         show_database=True,
         convert_dataframe=True,
@@ -57,6 +57,9 @@ def gashis_artefact_detection(
         window_size=window_size,
         return_vals=True,
     )[1].set_index("Time", inplace=False)
+    # data_w_artifacts.index = RangeIndex(start=0, stop=len(data_w_artifacts), step=1)
+    # data_w_artifacts.attrs = data.attrs
+    return data_w_artifacts
 
 
 @parallel_iteration
@@ -235,7 +238,7 @@ def main():
                     butter_lowpass_filter_filtfilt(
                         data=session_data,
                         cutoff=cutoff_frequency,
-                        fs=session_data.attrs["sampling frequency"],
+                        fs=session_data.attrs.get("sampling frequency", 4),
                         order=butterworth_order,
                     ),
                     index=session_data.index,
@@ -265,13 +268,15 @@ def main():
 
     start = time()
 
+    # TODO: better handling of sampling frequency. If it is not defined, now
+    # it will take 4Hz.
     eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
         side: {
             user: {
                 session: DataFrame(
                     decomposition(
                         session_data.values,
-                        eda_data[side][user][session].attrs["sampling frequency"],
+                        eda_data[side][user][session].attrs.get("sampling frequency", 4),
                     )["phasic component"]
                     if isinstance(session_data, Series)
                     or (
@@ -283,9 +288,9 @@ def main():
                             [
                                 decomposition(
                                     session_data.values,
-                                    eda_data[side][user][session].attrs[
-                                        "sampling frequency"
-                                    ],
+                                    eda_data[side][user][session].attrs.get(
+                                        "sampling frequency", 4
+                                    ),
                                 )["phasic component"],
                                 session_data[:, 1]
                                 if isinstance(session_data, ndarray)
