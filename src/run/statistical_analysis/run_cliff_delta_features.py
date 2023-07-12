@@ -1,60 +1,87 @@
-from typing import Any
-from sys import path
+from collections import defaultdict
 from logging import DEBUG, INFO, basicConfig, getLogger
+from sys import path
+from typing import Any
+from json import dump
+
+from effect_size_analysis.cliff_delta import cliff_delta
+from numpy import load
+from pandas import Series
+from tqdm.auto import tqdm
 
 path.append(".")
-from src.utils.io import load_and_prepare_data, load_config, load_processed_data
-from src.utils.experiment_info import ExperimentInfo
+from src.feature_extraction.eda import EDA_FEATURE_NAMES
+from src.utils.io import load_config
 
 basicConfig(filename="logs/run_cliff_delta_features.log", level=DEBUG)
 
 logger = getLogger("main")
 
-def segment_extract_featurea():
-    (
-    values_left,
-    values_right,
-    labels_left,
-    labels_right,
-    groups_left,
-    groups_right,
-) = segment(
-    data=eda_data,
-    experiment_info_as_dict=experiment_info_as_dict,
-    segment_size_in_sampling_rate=segment_size_in_sampling_rate,
-    segment_size_in_secs=segment_size_in_secs,
-    data_sample_rate=eda_sample_rate,
-)
-
+CLIFF_DELTA_BINS = {
+    "small": 0.11,
+    "medium": 0.28,
+    "large": 0.43,
+}  # effect sizes from (Vargha and Delaney (2000)) "negligible" for the rest
 
 
 def main():
-    path_to_config: str = (
-        "src/run/statistical_analysis/config_cliff_delta_feautures.yml"
-    )
+    path_to_config: str = "src/run/statistical_analysis/config_cliff_delta_features.yml"
 
     logger.info("Starting model training")
     configs: dict[str, Any] = load_config(path=path_to_config)
     logger.debug("Configs loaded")
 
-    path_to_experiment_info: str = configs["path_to_experiment_info"]
-    eda_data_base_path: str = configs["eda_data_base_path"]
-    eda_data_format: str = configs["eda_data_format"]
-    mode: int = configs["mode"]
-    segment_size_in_secs = configs['segment_size_in_secs']
-    eda_sample_rate = configs['eda_sample_rate']
+    path_to_features_data: str = configs["path_to_features_data"]
+    path_to_save_data: str = configs["path_to_save_data"]
+    # artifacts: bool = configs["artifacts"]
+    alpha: int = configs.get("alpha", 0.05)
+    components: list[str] = configs["components"]
 
-    experiment_info = ExperimentInfo(path=path_to_experiment_info, mode=mode)
-    eda_data = load_processed_data(path=eda_data_base_path, file_format=eda_data_format)
+    data: dict[str, Any] = load(path_to_features_data)
 
-    users_in_left_side = set(eda_data["left"].keys())
-    users_in_right_side = set(eda_data["right"].keys())
-    logger.debug(
-        f"Number of users with both left and right hand data: {len(users_in_left_side & users_in_right_side)}"
-    )
-    
-    segment_size_in_sampling_rate: int = segment_size_in_secs * eda_sample_rate
-    experiment_info_as_dict = experiment_info.to_dict()
+    features_left = data["features_left"]
+    features_right = data["features_right"]
+    labels_left = data["labels_left"]
+    labels_right = data["labels_right"]
+    # groups_left = data["groups_left"]
+    # groups_right = data["groups_right"]
+
+    # if artifacts:
+    #     artefacts_left = data["artefacts_left"]
+    #     artefacts_right = data["artefacts_right"]
+
+    positive_data_left = features_left[labels_left == 1]
+    negative_data_left = features_left[labels_left == 0]
+
+    positive_data_right = features_right[labels_right == 1]
+    negative_data_right = features_right[labels_right == 0]
+
+    cliff_delta_results = defaultdict(lambda: defaultdict(lambda: dict()))
+    for class_name, data_left, data_right in [
+        ("positive", positive_data_left, positive_data_right),
+        ("negative", negative_data_left, negative_data_right),
+    ]:
+        for num_component, component_name in enumerate(components):
+            for i, feature in tqdm(
+                enumerate(EDA_FEATURE_NAMES),
+                desc=f"Feature progress for component {component_name}, class {class_name}",
+                total=len(EDA_FEATURE_NAMES),
+            ):
+                cliff_delta_results[class_name][component_name][feature] = cliff_delta(
+                    s1=data_left[:, i, num_component],
+                    s2=data_right[:, i, num_component],
+                    alpha=alpha,
+                    accurate_ci=True,
+                    raise_nan=False,
+                )
+
+    # save dictionary to json file
+    with open(path_to_save_data, "w") as f:
+        dump(cliff_delta_results, f)
+    # d = {"positive": cliff_delta_positive, "negative": cliff_delta_negative}
+    # cliff_deltas = concat_dataframe(d.values(), axis=0, keys=d.keys())
+
+    # cliff_deltas.to_csv(path_to_save_data)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,20 @@ from scipy.stats import linregress
 
 logger = getLogger(__name__)
 
+EDA_FEATURE_NAMES: list[str] = [
+    "min_feat",
+    "max_feat",
+    "mean_feat",
+    "std_feat",
+    "dynamic_range_feat",
+    "slope_feat",
+    "absolute_slope_feat",
+    "first_derivetive_mean_feat",
+    "first_derivative_std_feat",
+    "number_of_peaks_feat",
+    "peaks_amplitude_feat",
+]
+
 
 def get_eda_features(data: ndarray, sampling_rate: int = 4) -> ndarray:
     """This method performs the feature extraction for an EDA signal (be it mixed or phasic).
