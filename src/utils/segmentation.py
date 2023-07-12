@@ -128,12 +128,13 @@ def segment_info(
     user: str,
     mode: int,
     artefact: bool,
+    components: list[str],
 ):
     if not artefact:
         return (
             session_data.loc[
                 IndexSlice[session, start:end],
-                "mixed-EDA",
+                components,
             ].values,
             get_session_moment(start, end, session_info, mode),
             user,
@@ -142,7 +143,7 @@ def segment_info(
         return (
             session_data.loc[
                 IndexSlice[session, start:end],
-                "mixed-EDA",
+                components,
             ].values,
             get_session_moment(start, end, session_info, mode),
             user,
@@ -162,6 +163,7 @@ def segment(
     # sessions_all: list[str] | None = ["experiment"],
     mode: int = 1,
     artefact: bool = False,
+    components: list[str] = ["mixed-EDA", "phasic-EDA", "tonic-EDA"],
 ):
     data_segmented_left: list[tuple] = []
     data_segmented_right: list[tuple] = []
@@ -219,6 +221,7 @@ def segment(
                     session=session,
                     user=user,
                     session_data=session_data_left,
+                    components=components,
                 )
                 for start, end in zip(starts_left, ends_left)
             ]
@@ -232,6 +235,7 @@ def segment(
                     session=session,
                     user=user,
                     session_data=session_data_right,
+                    components=components,
                 )
                 for start, end in zip(starts_right, ends_right)
             ]

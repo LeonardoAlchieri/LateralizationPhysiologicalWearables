@@ -320,12 +320,71 @@ def main():
     }
 
     print("Total phasic component calculation: %.2f s" % (time() - start))
+    
+    # FIXME: we should not run the same thing twice to get the tonic and phasic components!
+    eda_data_tonic: defaultdict[str, list[dict[str, ndarray]]] = {
+        side: {
+            user: {
+                session: DataFrame(
+                    decomposition(
+                        session_data.values,
+                        eda_data[side][user][session].attrs.get("sampling frequency", 4),
+                    )["tonic component"]
+                    if isinstance(session_data, Series)
+                    or (
+                        isinstance(session_data, DataFrame)
+                        and len(session_data.columns) == 1
+                    )
+                    else (
+                        stack(
+                            [
+                                decomposition(
+                                    session_data.values,
+                                    eda_data[side][user][session].attrs.get(
+                                        "sampling frequency", 4
+                                    ),
+                                )["tonic component"],
+                                session_data[:, 1]
+                                if isinstance(session_data, ndarray)
+                                else session_data.iloc[:, 1],
+                            ],
+                            axis=1,
+                        )
+                    ),
+                    index=session_data.index,
+                    columns=(
+                        session_data.columns
+                        if isinstance(session_data, DataFrame)
+                        else None
+                    ),
+                )
+                for session, session_data in tqdm(
+                    user_edat_data.items(), desc="Session progress", colour="blue"
+                )
+            }
+            for user, user_edat_data in tqdm(
+                eda_data_filtered[side].items(),
+                desc="EDA decomposition progress (user)",
+                colour="green",
+            )
+        }
+        for side in eda_data_filtered.keys()
+    }
+
+    print("Total tonic component calculation: %.2f s" % (time() - start))
     if plots:
         make_lineplot(
             data=eda_data_phasic[random_side][random_user][random_session],
             which="EDA",
             savename=f"eda_phasic_{random_side}_{random_user}_{random_session}",
             title="Example EDA phasic component",
+        )
+        
+        make_lineplot(
+            data=eda_data_tonic[random_side][random_user][random_session],
+            which="EDA",
+            savename=f"eda_tonic_{random_side}_{random_user}_{random_session}",
+            title="Example EDA tonic component",
         )
 
     eda_data_standardized = rescaling(
@@ -334,6 +393,10 @@ def main():
     )
     eda_data_standardized_phasic = rescaling(
         data=eda_data_phasic,
+        rescaling_method=get_rescaling_technique(rescaling_method_name),
+    )
+    eda_data_standardized_tonic = rescaling(
+        data=eda_data_tonic,
         rescaling_method=get_rescaling_technique(rescaling_method_name),
     )
 
@@ -350,10 +413,19 @@ def main():
             savename=f"eda_standardized_{random_side}_{random_user}_{random_session}",
             title="Example EDA phasic standardized",
         )
+        make_lineplot(
+            data=eda_data_standardized_tonic[random_side][random_user][random_session],
+            which="EDA",
+            savename=f"eda_standardized_{random_side}_{random_user}_{random_session}",
+            title="Example EDA tonic standardized",
+        )
 
     if concat_sessions:
         eda_data_standardized_phasic = concate_session_data(
             eda_data_standardized_phasic
+        )
+        eda_data_standardized_tonic = concate_session_data(
+            eda_data_standardized_tonic
         )
 
         eda_data_standardized = concate_session_data(eda_data_standardized)
@@ -372,8 +444,11 @@ def main():
                         user_data_phasic: Series = eda_data_standardized_phasic[side][
                             user
                         ]
+                        user_data_tonic: Series = eda_data_standardized_tonic[side][
+                            user
+                        ]
                         df_to_save: DataFrame = concat(
-                            [user_data_standardized, user_data_phasic], axis=1
+                            [user_data_standardized, user_data_phasic,user_data_tonic], axis=1
                         )
                         if "Artifact" in df_to_save.columns:
                             aux_res = df_to_save[["Artifact"]].loc[
@@ -384,10 +459,10 @@ def main():
                             )
                             df_to_save["Artifact"] = aux_res
 
-                        if len(df_to_save.columns) == 2:
-                            df_to_save.columns = ["mixed-EDA", "phasic-EDA"]
-                        elif len(df_to_save.columns) == 3:
-                            df_to_save.columns = ["mixed-EDA", "phasic-EDA", "Artifact"]
+                        if len(df_to_save.columns) == 3:
+                            df_to_save.columns = ["mixed-EDA", "phasic-EDA", "tonic-EDA"]
+                        elif len(df_to_save.columns) == 4:
+                            df_to_save.columns = ["mixed-EDA", "phasic-EDA", "tonic-EDA", "Artifact"]
                         else:
                             raise RuntimeError(
                                 f"Unexpected number of columns: {len(df_to_save.columns)}"
