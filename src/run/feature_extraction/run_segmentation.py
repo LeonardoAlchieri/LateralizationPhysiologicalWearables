@@ -3,7 +3,7 @@ from logging import DEBUG, INFO, basicConfig, getLogger
 from sys import path
 from typing import Any
 
-from numpy import ndarray
+from numpy import ndarray, savez
 
 path.append(".")
 from src.utils.experiment_info import ExperimentInfo
@@ -65,14 +65,17 @@ def main():
             mode=experiment_info.get_mode(),
             components=components,
         )
-        data_to_save = {
-            "values_left": [el.tolist() for el in values_left],
-            "values_right": [el.tolist() for el in values_right],
-            "labels_left": labels_left,
-            "labels_right": labels_right,
-            "groups_left": groups_left,
-            "groups_right": groups_right,
-        }
+        logger.info("Saving data")
+        savez(
+            file=path_to_save_file,
+            values_left=values_left,
+            values_right=values_right,
+            labels_left=labels_left,
+            labels_right=labels_right,
+            groups_left=groups_left,
+            groups_right=groups_right,
+        )
+        logger.info("Data saved successfully")
     else:
         values_left: list[ndarray]
         values_right: list[ndarray]
@@ -101,23 +104,22 @@ def main():
             artefact=True,
             components=components,
         )
-        data_to_save = {
-            "values_left": [el.tolist() for el in values_left],
-            "values_right": [el.tolist() for el in values_right],
-            "labels_left": labels_left,
-            "labels_right": labels_right,
-            "groups_left": groups_left,
-            "groups_right": groups_right,
-            "artefacts_left": artefacts_left,
-            "artefacts_right": artefacts_right,
-        }
 
-    logger.debug("Segmentation done")
-
-    with open(path_to_save_file, "w") as fp:
+    
         logger.info("Saving data")
-        json_dump(data_to_save, fp)
+        savez(
+            file=path_to_save_file,
+            values_left=values_left,
+            values_right=values_right,
+            labels_left=labels_left,
+            labels_right=labels_right,
+            groups_left=groups_left,
+            groups_right=groups_right,
+            artefacts_left=artefacts_left,
+            artefacts_right=artefacts_right,
+        )
         logger.info("Data saved successfully")
+        
 
 
 if __name__ == "__main__":
