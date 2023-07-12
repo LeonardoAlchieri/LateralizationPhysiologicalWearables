@@ -1,4 +1,5 @@
-git+https://github.com/LeonardoAlchieri/pandas.git@attrs_in_parquet_metadata
+# git+https://github.com/LeonardoAlchieri/pandas.git@attrs_in_parquet_metadata
+pandas
 git+https://github.com/LeonardoAlchieri/cvxEDA.git
 git+https://github.com/LeonardoAlchieri/affect-size.git
 git+https://github.com/LeonardoAlchieri/EDArtifact.git@topic/pip-installable

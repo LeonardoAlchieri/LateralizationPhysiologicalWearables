@@ -10,7 +10,7 @@ from numpy.random import seed as set_numpy_seed
 from pandas import DataFrame, IndexSlice, concat
 from tqdm.auto import tqdm
 
-from src.ml import resampling
+from src.ml import resampling, data_augmentation
 
 
 def train_score_single_model(
@@ -23,6 +23,8 @@ def train_score_single_model(
     ml_model: LazyClassifier,
     classifier_seed: int,
     user: str,
+    augment_data: bool = False,
+    **kwargs,
 ) -> DataFrame:
     """
     Train and score a single model using a lazy classifier and return a DataFrame with the model's scores.
@@ -47,6 +49,8 @@ def train_score_single_model(
         The random seed to use for the classifier.
     user : str
         The user for whom to train and score the model.
+    augment_data : bool, optional
+        Whether to augment the data, by default False.
 
     Returns
     -------
@@ -60,7 +64,23 @@ def train_score_single_model(
 
     train_labels: ndarray = y_train[train_data_mask]
     test_labels: ndarray = y_test[test_data_mark]
-    clf = ml_model(predictions=True, random_state=classifier_seed)
+    clf = ml_model(
+        predictions=True,
+        random_state=classifier_seed,
+        classifiers=kwargs.get("classifiers", "all"),
+    )
+
+    if augment_data:
+        augmentation_params = kwargs.get("augmentation_params", {})
+        train_data, train_labels = data_augmentation(
+            x=train_data,
+            y=train_labels,
+            methods=augmentation_params.get(
+                "augmentation_methods", ["jitter", "scaling", "flipping", "warping"]
+            ),
+            aug_percent=augmentation_params.get("augmentation_percent", 0.2),
+            seed=augmentation_params.get("augmentation_seed", None),
+        )
 
     models: DataFrame
     models, _ = clf.fit(
@@ -83,6 +103,8 @@ def LOSO(
     ml_model: LazyClassifier,
     classifier_seed: int = 42,
     n_jobs: int = 1,
+    augment_data: bool = False,
+    **kwargs,
 ):
     """
     Perform Leave-One-Subject-Out (LOSO) cross-validation for training and scoring a lazy classifier, and return a list
@@ -108,15 +130,25 @@ def LOSO(
         The random seed to use for the classifier. Default is 42.
     n_jobs : int, optional
         The number of jobs to run in parallel. Default is 1.
+    augment_data : bool, optional
+        Whether to augment the data or not. Default is False.
 
     Returns
     -------
     list
         A list of DataFrames with the scores for each user.
     """
+    custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
+    method_to_train: Callable
+    if custom_method is None:
+        method_to_train = train_score_single_model
+    else:
+        # NOTE: the custom method should have a specific input
+        method_to_train = custom_method
+        
     if n_jobs == 1:
         scores = [
-            train_score_single_model(
+            method_to_train(
                 groups_train=groups_train,
                 groups_test=groups_test,
                 x_train=x_train,
@@ -126,12 +158,15 @@ def LOSO(
                 ml_model=ml_model,
                 classifier_seed=classifier_seed,
                 user=user,
+                classifiers=kwargs.get("classifiers", "all"),
+                augment_data=augment_data,
+                augmentation_params=kwargs.get("augmentation_params", None),
             )
             for user in set(groups_train)
         ]
     else:
         scores = Parallel(n_jobs=n_jobs)(
-            delayed(train_score_single_model)(
+            delayed(method_to_train)(
                 groups_train=groups_train,
                 groups_test=groups_test,
                 x_train=x_train,
@@ -141,6 +176,9 @@ def LOSO(
                 ml_model=ml_model,
                 classifier_seed=classifier_seed,
                 user=user,
+                classifiers=kwargs.get("classifiers", "all"),
+                augment_data=augment_data,
+                augmentation_params=kwargs.get("augmentation_params", None),
             )
             for user in set(groups_train)
         )
@@ -148,7 +186,7 @@ def LOSO(
 
 
 def run_same_side_classifications(
-    x, y, folds, n_seeds_to_test_classifiers: int = 30, n_jobs: int = -1
+    x, y, folds, n_seeds_to_test_classifiers: int = 30, n_jobs: int = -1, **kwargs
 ) -> tuple[DataFrame, list[list[DataFrame]]]:
     """
     The run_same_side_classifications function takes in a set of feature
@@ -211,6 +249,10 @@ def run_same_side_classifications(
             ml_model=classifier,
             classifier_seed=random_state_classifier,
             n_jobs=n_jobs,
+            classifiers=kwargs.get("classifiers", "all"),
+            augment_data=kwargs.get("augment_data", False),
+            augmentation_params=kwargs.get("augmentation_params", None),
+            custom_fold_run_method=kwargs.get("custom_fold_run_method", None),
         )
         all_results.append(all_models)
 
@@ -308,6 +350,7 @@ def run_different_classifications(
     folds_test: int,
     n_jobs: int = -1,
     n_seeds_to_test_classifiers: int = 30,
+    **kwargs,
 ) -> tuple[DataFrame, list[list[DataFrame]]]:
     """
     Run multiple iterations of different classifiers on the resampled training and testing data,
@@ -370,6 +413,7 @@ def run_different_classifications(
             ml_model=classifier,
             classifier_seed=random_state_classifier,
             n_jobs=n_jobs,
+            classifiers=kwargs.get("classifiers", "all"),
         )
         all_results.append(all_models)
 

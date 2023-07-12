@@ -12,7 +12,7 @@ from warnings import warn
 
 from eda_artefact_detection.detection import compute_eda_artifacts
 from numpy import ndarray, stack
-from pandas import DataFrame, IndexSlice, Series, concat, read_csv
+from pandas import DataFrame, IndexSlice, Series, concat, read_csv, RangeIndex
 from tqdm.auto import tqdm
 
 path.append(".")
@@ -26,11 +26,15 @@ from src.utils import (
     remove_empty_sessions,
     segment_over_experiment_time,
 )
-from src.utils.eda import decomposition, standardize
+from src.utils.eda import decomposition
 from src.utils.filters import butter_lowpass_filter_filtfilt
 from src.utils.io import load_and_prepare_data, load_config, load_processed_data
 from src.utils.plots import make_lineplot
-from src.utils.pre_processing import concate_session_data, rescaling
+from src.utils.pre_processing import (
+    concate_session_data,
+    rescaling,
+    get_rescaling_technique,
+)
 
 basicConfig(filename="logs/run_eda_filtering.log", level=DEBUG)
 
@@ -45,7 +49,7 @@ def gashis_artefact_detection(
     window_size: int = 4,
     **kwargs,
 ):
-    return compute_eda_artifacts(
+    data_w_artifacts = compute_eda_artifacts(
         data=data,
         show_database=True,
         convert_dataframe=True,
@@ -53,6 +57,9 @@ def gashis_artefact_detection(
         window_size=window_size,
         return_vals=True,
     )[1].set_index("Time", inplace=False)
+    # data_w_artifacts.index = RangeIndex(start=0, stop=len(data_w_artifacts), step=1)
+    # data_w_artifacts.attrs = data.attrs
+    return data_w_artifacts
 
 
 @parallel_iteration
@@ -93,6 +100,7 @@ def main():
     path_to_main_folder: str = configs["path_to_main_folder"]
     path_to_save_folder: str = configs["path_to_save_folder"]
     path_to_experiment_time: str | None = configs.get("path_to_experiment_time", None)
+    rescaling_method_name: str = configs["rescaling_method"]
     cutoff_frequency: float = configs["cutoff_frequency"]
     butterworth_order: int = configs["butterworth_order"]
     n_jobs: int = configs["n_jobs"]
@@ -154,10 +162,10 @@ def main():
             raise ValueError(
                 f"Artefact window size must be provided when using artefact detection method 1."
             )
+        # FIXME: not working anymore
         eda_data = gashis_artefact_detection(
             data=eda_data, window_size=artefact_window_size, n_jobs=n_jobs
         )
-        # eda_data = perform_artefact_detection(eda_data)
     else:
         eda_data = {
             side: {
@@ -223,18 +231,21 @@ def main():
             title="Example EDA",
         )
 
-    eda_data_filtered: defaultdict[str, dict[str, dict[str, Series]]] = {
+    eda_data_filtered: defaultdict[str, dict[str, dict[str, Series | DataFrame]]] = {
         side: {
             user: {
                 session_name: DataFrame(
                     butter_lowpass_filter_filtfilt(
                         data=session_data,
                         cutoff=cutoff_frequency,
-                        fs=session_data.attrs["sampling frequency"],
+                        fs=session_data.attrs.get("sampling frequency", 4),
                         order=butterworth_order,
                     ),
                     index=session_data.index,
-                    columns=session_data.columns,
+                    # NOTE: if we run the artefact detection, it is going to be a dataframe
+                    columns=session_data.columns
+                    if isinstance(session_data, DataFrame)
+                    else None,
                 )
                 for session_name, session_data in user_edat_data.items()
             }
@@ -257,23 +268,29 @@ def main():
 
     start = time()
 
+    # TODO: better handling of sampling frequency. If it is not defined, now
+    # it will take 4Hz.
     eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
         side: {
             user: {
                 session: DataFrame(
                     decomposition(
                         session_data.values,
-                        eda_data[side][user][session].attrs["sampling frequency"],
+                        eda_data[side][user][session].attrs.get("sampling frequency", 4),
                     )["phasic component"]
                     if isinstance(session_data, Series)
+                    or (
+                        isinstance(session_data, DataFrame)
+                        and len(session_data.columns) == 1
+                    )
                     else (
                         stack(
                             [
                                 decomposition(
                                     session_data.values,
-                                    eda_data[side][user][session].attrs[
-                                        "sampling frequency"
-                                    ],
+                                    eda_data[side][user][session].attrs.get(
+                                        "sampling frequency", 4
+                                    ),
                                 )["phasic component"],
                                 session_data[:, 1]
                                 if isinstance(session_data, ndarray)
@@ -312,10 +329,12 @@ def main():
         )
 
     eda_data_standardized = rescaling(
-        data=eda_data_filtered, rescaling_method=standardize
+        data=eda_data_filtered,
+        rescaling_method=get_rescaling_technique(rescaling_method_name),
     )
     eda_data_standardized_phasic = rescaling(
-        data=eda_data_phasic, rescaling_method=standardize
+        data=eda_data_phasic,
+        rescaling_method=get_rescaling_technique(rescaling_method_name),
     )
 
     if plots:
