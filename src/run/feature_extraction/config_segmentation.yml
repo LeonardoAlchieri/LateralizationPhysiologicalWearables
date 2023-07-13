@@ -10,5 +10,5 @@ artifacts: False
 
 components:
   - "mixed-EDA"
-  - "phasic-EDA"
+  # - "phasic-EDA"
   # - "tonic-EDA"

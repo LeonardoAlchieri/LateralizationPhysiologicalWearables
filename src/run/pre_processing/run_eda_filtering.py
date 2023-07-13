@@ -277,6 +277,7 @@ def main():
                     decomposition(
                         session_data.values,
                         eda_data[side][user][session].attrs.get("sampling frequency", 4),
+                        name=f"{side}_{user}_{session}",
                     )["phasic component"]
                     if isinstance(session_data, Series)
                     or (
@@ -291,6 +292,7 @@ def main():
                                     eda_data[side][user][session].attrs.get(
                                         "sampling frequency", 4
                                     ),
+                                    name=f"{side}_{user}_{session}",
                                 )["phasic component"],
                                 session_data[:, 1]
                                 if isinstance(session_data, ndarray)
