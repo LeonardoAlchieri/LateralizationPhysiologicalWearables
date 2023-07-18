@@ -1,5 +1,5 @@
-path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart.npz"
-path_to_save_data: "./data.nosync/usilaughs/results/cliff_delta_complete.json"
+path_to_features_data: "./data.nosync/mwc2022/features/EDA_features_noart-2.npz"
+path_to_save_data: "./data.nosync/mwc2022/results/cliff_delta_complete-2.json"
 alpha: 0.05
 components: #NOTE: the order should match the order inside config_segmentation.yml
   - "mixed-EDA"

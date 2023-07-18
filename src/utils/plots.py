@@ -2,24 +2,46 @@ from collections import defaultdict
 from itertools import cycle
 from os.path import join as join_paths
 from pathlib import Path
+from logging import getLogger
+from ast import literal_eval
 
 from matplotlib.axes import SubplotBase
 from matplotlib.patches import Patch
-from matplotlib.pyplot import close, cm, figure
-from matplotlib.pyplot import legend as make_legend
-from matplotlib.pyplot import plot, savefig, show, style, subplots
-from matplotlib.pyplot import title as figtitle
-from matplotlib.pyplot import xlabel, xticks, ylabel
+from matplotlib.pyplot import (
+    close,
+    cm,
+    figure,
+    legend as make_legend,
+    plot,
+    rcParams,
+    savefig,
+    show,
+    style,
+    subplots,
+    title as figtitle,
+    xlabel,
+    xticks,
+    ylabel,
+    errorbar,
+    axhline,
+    tick_params,
+    ylim,
+    margins
+)
 from numpy import asarray, mean, ndarray, std, unique
 from pandas import DataFrame, IndexSlice, Series, Timestamp, to_datetime
 from seaborn import (
     barplot,
     boxplot,
     heatmap,
-    set_context,
-    set_theme,
     set as set_seaborn,
+    set_context,
+    set_style,
+    set_theme,
+    color_palette,
 )
+
+logger = getLogger("plots")
 
 
 def bland_altman_plot(
@@ -470,9 +492,25 @@ def plot_binary_labels(
     counts: DataFrame,
     title: str,
     dataset_name: str,
+    figsize: int,
     output_folder: str = "./visualizations/",
 ):
-    set_seaborn(font_scale=1.3)
+    # set_seaborn(font_scale=1)
+    
+    # set the figure size using the golden ratio
+    golden_ratio = (5**0.5 - 1) / 2
+
+    # set seaborn style
+    set_style("darkgrid")
+
+    # # set latex font
+    rcParams["mathtext.fontset"] = "stix"
+    rcParams["font.family"] = "STIXGeneral"
+    
+    # increase font size
+    rcParams.update({"font.size": 14})
+
+    fig, ax = subplots(figsize=(figsize, figsize * golden_ratio))
     ax1 = barplot(data=counts, x="side", y="count", hue="label")
 
     percentages = counts.groupby("side", group_keys=True)["count"].apply(
@@ -483,5 +521,86 @@ def plot_binary_labels(
     figtitle(title, fontsize=18)
     make_legend(bbox_to_anchor=(0.9, 1), loc="upper left", borderaxespad=0)
     output_path = join_paths(output_folder, f"label_distribution_{dataset_name}.pdf")
-    savefig(output_path)
+    savefig(output_path, bbox_inches="tight")
+    show()
+
+
+def make_errorplot(
+    cliff_deltas: DataFrame,
+    type_event: str,
+    color: tuple[float],
+    ax,
+    custom_label: str | None = None,
+    elinewidth: int = 30,
+    markersize: int = 10,
+    component: str = "mixed-EDA",
+) -> None:
+    bounds = [
+        literal_eval(el)
+        for el in cliff_deltas.loc[
+            IndexSlice[component, :], IndexSlice[type_event, "confidence interval"]
+        ].values
+    ]
+    values = cliff_deltas.loc[IndexSlice[component, :], IndexSlice[type_event, "value"]].astype(float).values
+    lower_bounds = [abs(val - el[0]) for el, val in zip(bounds, values)]
+    upper_bounds = [abs(el[1] - val) for el, val in zip(bounds, values)]
+
+    if custom_label is None:
+        custom_label = type_event
+
+    ax.errorbar(
+        x=["_".join(el) for el in cliff_deltas.loc[IndexSlice[component, :], :].index],
+        y=values,
+        yerr=(lower_bounds, upper_bounds),
+        label=custom_label,
+        elinewidth=elinewidth,
+        linestyle="none",
+        markersize=markersize,
+        marker=".",
+        color=color,
+        ecolor=(*color, 0.3),
+    )
+
+
+def cliff_delta_plot(cliff_deltas: DataFrame, dataset: str, figsize: int = 7, path_to_save_figure: str = "./final_visualizations") -> None:
+    # set the figure size using the golden ratio
+    golden_ratio = (5**0.5 - 1) / 2
+
+    # set seaborn style
+    set_style("darkgrid")
+
+    # # set latex font
+    rcParams["mathtext.fontset"] = "stix"
+    rcParams["font.family"] = "STIXGeneral"
+
+    # increase font size
+    rcParams.update({"font.size": 14})
+
+    fig, ax = subplots(figsize=(figsize, figsize * golden_ratio))
+
+    colors = color_palette("colorblind", n_colors=2)
+
+    make_errorplot(cliff_deltas, "Cognitive Load", colors[0], "Sleep")
+    make_errorplot(cliff_deltas, "Baseline", colors[1], "Awake")
+
+    ylim(-0.6, 0.6)
+    margins(x=0.1)
+
+    # set a horizontal line at 0.1 and -0.1
+    axhline(0.1, color="grey", linestyle="--")
+    axhline(-0.1, color="grey", linestyle="--")
+
+    axhline(0.3, color="black", linestyle="--")
+    axhline(-0.3, color="black", linestyle="--")
+    ylabel("Cliff's Delta")
+
+    # set the x label to a 30º angle
+    xticks(rotation=30, ha="right")
+    # put the x label ticks closer
+    tick_params(axis="x", which="major", pad=0.01)
+    # move the vertical grid lines to the right
+
+    make_legend()
+    figtitle("Cliff's delta between left and right hand features")
+    savefig(f"../final_visualizations/cliff_delta-{dataset}.pdf", bbox_inches="tight")
     show()

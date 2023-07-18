@@ -1,6 +1,7 @@
 from numpy import ndarray, stack
 from pandas import Series, DataFrame
 from cvxEDA import cvxEDA
+from gc import collect as pick_up_trash
 
 from logging import getLogger
 
@@ -51,4 +52,5 @@ def decomposition(
         raise TypeError(
             f"eda_signal must be a Series, DataFrame or ndarray, not {type(eda_signal)}"
         )
+    pick_up_trash()
     return cvxEDA(yn, 1.0 / frequency)

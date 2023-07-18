@@ -1,4 +1,6 @@
+from collections import defaultdict
 from glob import glob
+from logging import DEBUG, INFO, basicConfig, getLogger
 from os import remove as remove_file
 from os.path import join as join_paths
 from pathlib import Path
@@ -12,12 +14,11 @@ from warnings import warn
 
 from eda_artefact_detection.detection import compute_eda_artifacts
 from numpy import ndarray, stack
-from pandas import DataFrame, IndexSlice, Series, concat, read_csv, RangeIndex
+from pandas import DataFrame, IndexSlice, RangeIndex, Series, concat, read_csv
 from tqdm.auto import tqdm
 
 path.append(".")
-from collections import defaultdict
-from logging import DEBUG, INFO, basicConfig, getLogger
+
 
 from src.utils import (
     blockPrinting,
@@ -25,16 +26,25 @@ from src.utils import (
     parallel_iteration,
     remove_empty_sessions,
     segment_over_experiment_time,
+    correct_session_name,
 )
 from src.utils.eda import decomposition
+from src.utils.experiment_info import ExperimentInfo
 from src.utils.filters import butter_lowpass_filter_filtfilt
-from src.utils.io import load_and_prepare_data, load_config, load_processed_data
+from src.utils.io import (
+    filter_sleep_nights,
+    load_and_prepare_data,
+    load_config,
+    load_processed_data,
+    cut_to_shortest_series,
+)
 from src.utils.plots import make_lineplot
 from src.utils.pre_processing import (
     concate_session_data,
-    rescaling,
     get_rescaling_technique,
+    rescaling,
 )
+from src.utils.eda_decomposition import apply_cvxeda_decomposition
 
 basicConfig(filename="logs/run_eda_filtering.log", level=DEBUG)
 
@@ -90,6 +100,21 @@ def acc_artefact_detection(
     return session_data
 
 
+def apply_session_name_correction(
+    eda_data: dict[str, dict[str, dict[str, DataFrame]]]
+) -> dict[str, dict[str, dict[str, DataFrame]]]:
+    return {
+        side: {
+            user: {
+                correct_session_name(session_name): session_data
+                for session_name, session_data in eda_data[side][user].items()
+            }
+            for user in eda_data[side].keys()
+        }
+        for side in eda_data.keys()
+    }
+
+
 def main():
     path_to_config: str = "src/run/pre_processing/config_eda_filtering.yml"
 
@@ -100,6 +125,7 @@ def main():
     path_to_main_folder: str = configs["path_to_main_folder"]
     path_to_save_folder: str = configs["path_to_save_folder"]
     path_to_experiment_time: str | None = configs.get("path_to_experiment_time", None)
+    path_to_experiment_info: str | None = configs.get("path_to_experiment_info", None)
     rescaling_method_name: str = configs["rescaling_method"]
     cutoff_frequency: float = configs["cutoff_frequency"]
     butterworth_order: int = configs["butterworth_order"]
@@ -136,6 +162,16 @@ def main():
         mode=mode,
         device=device,
     )
+
+    if path_to_experiment_info is not None:
+        experiment_info = ExperimentInfo(path=path_to_experiment_info, mode=mode)
+        experiment_info.filter_correct_times(inplace=True)
+
+    if mode == 2:
+        eda_data = apply_session_name_correction(eda_data)
+        eda_data = filter_sleep_nights(
+            data=eda_data, experiment_info=experiment_info.to_df(), format_data="raw"
+        )
 
     if subset_data:
         eda_data_new = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
@@ -205,6 +241,9 @@ def main():
     if experiment_time is not None:
         eda_data = segment_over_experiment_time(eda_data, experiment_time)
     eda_data = remove_empty_sessions(eda_data)
+    
+    logger.info("Cutting data to shortest series")
+    eda_data = cut_to_shortest_series(data=eda_data)
 
     # NOTE: the data here is order this way: {side: {user: session: {Series}}},
     # ir {side: {user: Series}}, depending on the chosen mode.
@@ -266,114 +305,9 @@ def main():
             title="Example EDA after filter",
         )
 
-    start = time()
+    # FIXME: remove hardcoded sampling frequency. Should take automatically from each dataframe
+    eda_data_phasic, eda_data_tonic = apply_cvxeda_decomposition(eda_data=eda_data_filtered, n_jobs=n_jobs, sampling_frequecy=4)
 
-    # TODO: better handling of sampling frequency. If it is not defined, now
-    # it will take 4Hz.
-    eda_data_phasic: defaultdict[str, list[dict[str, ndarray]]] = {
-        side: {
-            user: {
-                session: DataFrame(
-                    decomposition(
-                        session_data.values,
-                        eda_data[side][user][session].attrs.get("sampling frequency", 4),
-                        name=f"{side}_{user}_{session}",
-                    )["phasic component"]
-                    if isinstance(session_data, Series)
-                    or (
-                        isinstance(session_data, DataFrame)
-                        and len(session_data.columns) == 1
-                    )
-                    else (
-                        stack(
-                            [
-                                decomposition(
-                                    session_data.values,
-                                    eda_data[side][user][session].attrs.get(
-                                        "sampling frequency", 4
-                                    ),
-                                    name=f"{side}_{user}_{session}",
-                                )["phasic component"],
-                                session_data[:, 1]
-                                if isinstance(session_data, ndarray)
-                                else session_data.iloc[:, 1],
-                            ],
-                            axis=1,
-                        )
-                    ),
-                    index=session_data.index,
-                    columns=(
-                        session_data.columns
-                        if isinstance(session_data, DataFrame)
-                        else None
-                    ),
-                )
-                for session, session_data in tqdm(
-                    user_edat_data.items(), desc="Session progress", colour="blue"
-                )
-            }
-            for user, user_edat_data in tqdm(
-                eda_data_filtered[side].items(),
-                desc="EDA decomposition progress (user)",
-                colour="green",
-            )
-        }
-        for side in eda_data_filtered.keys()
-    }
-
-    print("Total phasic component calculation: %.2f s" % (time() - start))
-    
-    # FIXME: we should not run the same thing twice to get the tonic and phasic components!
-    eda_data_tonic: defaultdict[str, list[dict[str, ndarray]]] = {
-        side: {
-            user: {
-                session: DataFrame(
-                    decomposition(
-                        session_data.values,
-                        eda_data[side][user][session].attrs.get("sampling frequency", 4),
-                    )["tonic component"]
-                    if isinstance(session_data, Series)
-                    or (
-                        isinstance(session_data, DataFrame)
-                        and len(session_data.columns) == 1
-                    )
-                    else (
-                        stack(
-                            [
-                                decomposition(
-                                    session_data.values,
-                                    eda_data[side][user][session].attrs.get(
-                                        "sampling frequency", 4
-                                    ),
-                                )["tonic component"],
-                                session_data[:, 1]
-                                if isinstance(session_data, ndarray)
-                                else session_data.iloc[:, 1],
-                            ],
-                            axis=1,
-                        )
-                    ),
-                    index=session_data.index,
-                    columns=(
-                        session_data.columns
-                        if isinstance(session_data, DataFrame)
-                        else None
-                    ),
-                )
-                for session, session_data in tqdm(
-                    user_edat_data.items(), desc="Session progress", colour="blue"
-                )
-            }
-            for user, user_edat_data in tqdm(
-                eda_data_filtered[side].items(),
-                desc="EDA decomposition progress (user)",
-                colour="green",
-            )
-        }
-        for side in eda_data_filtered.keys()
-    }
-
-    print("Total tonic component calculation: %.2f s" % (time() - start))
     if plots:
         make_lineplot(
             data=eda_data_phasic[random_side][random_user][random_session],
@@ -381,7 +315,7 @@ def main():
             savename=f"eda_phasic_{random_side}_{random_user}_{random_session}",
             title="Example EDA phasic component",
         )
-        
+
         make_lineplot(
             data=eda_data_tonic[random_side][random_user][random_session],
             which="EDA",
@@ -426,9 +360,7 @@ def main():
         eda_data_standardized_phasic = concate_session_data(
             eda_data_standardized_phasic
         )
-        eda_data_standardized_tonic = concate_session_data(
-            eda_data_standardized_tonic
-        )
+        eda_data_standardized_tonic = concate_session_data(eda_data_standardized_tonic)
 
         eda_data_standardized = concate_session_data(eda_data_standardized)
 
@@ -450,7 +382,8 @@ def main():
                             user
                         ]
                         df_to_save: DataFrame = concat(
-                            [user_data_standardized, user_data_phasic,user_data_tonic], axis=1
+                            [user_data_standardized, user_data_phasic, user_data_tonic],
+                            axis=1,
                         )
                         if "Artifact" in df_to_save.columns:
                             aux_res = df_to_save[["Artifact"]].loc[
@@ -462,9 +395,18 @@ def main():
                             df_to_save["Artifact"] = aux_res
 
                         if len(df_to_save.columns) == 3:
-                            df_to_save.columns = ["mixed-EDA", "phasic-EDA", "tonic-EDA"]
+                            df_to_save.columns = [
+                                "mixed-EDA",
+                                "phasic-EDA",
+                                "tonic-EDA",
+                            ]
                         elif len(df_to_save.columns) == 4:
-                            df_to_save.columns = ["mixed-EDA", "phasic-EDA", "tonic-EDA", "Artifact"]
+                            df_to_save.columns = [
+                                "mixed-EDA",
+                                "phasic-EDA",
+                                "tonic-EDA",
+                                "Artifact",
+                            ]
                         else:
                             raise RuntimeError(
                                 f"Unexpected number of columns: {len(df_to_save.columns)}"

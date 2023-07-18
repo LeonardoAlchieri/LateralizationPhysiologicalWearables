@@ -7,7 +7,11 @@ from numpy import ndarray, savez
 
 path.append(".")
 from src.utils.experiment_info import ExperimentInfo
-from src.utils.io import filter_sleep_nights, load_config, load_processed_data
+from src.utils.io import (
+    filter_sleep_nights,
+    load_config,
+    load_processed_data
+)
 from src.utils.segmentation import segment
 
 basicConfig(filename="logs/run_segmentation.log", level=DEBUG)
@@ -105,7 +109,6 @@ def main():
             components=components,
         )
 
-    
         logger.info("Saving data")
         savez(
             file=path_to_save_file,
@@ -119,7 +122,6 @@ def main():
             artefacts_right=artefacts_right,
         )
         logger.info("Data saved successfully")
-        
 
 
 if __name__ == "__main__":
