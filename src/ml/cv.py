@@ -10,7 +10,7 @@ from pandas import DataFrame, IndexSlice
 from sklearn.model_selection import StratifiedKFold
 from tqdm.auto import tqdm
 
-from src.ml import resampling
+from src.ml import resampling, local_resampling
 
 
 def run_fold(
@@ -31,11 +31,12 @@ def run_cross_validation_prediction(
     x: ndarray,
     y: ndarray,
     groups: ndarray,
-    generator_seeds: list[int] = [42, 666],
+    generator_seeds: tuple[int, int, int] = (42, 666, 69),
     n_seeds_to_test_classifiers: int = 10,
     n_seeds_to_test_folds: int = 10,
+    n_seeds_to_undersample: int = 10,
     n_fols: int = 5,
-    **kwargs
+    **kwargs,
 ) -> DataFrame:
     """
     Run N-fold cross validation for a classification task using LazyClassifier library.
@@ -71,21 +72,6 @@ def run_cross_validation_prediction(
     >>> results, all_results = run_cross_validation_prediction(x_train, y_train, groups_train)
     """
 
-    data = DataFrame(x, index=groups)
-    data["label"] = y
-
-    data_resampled = data.groupby(axis=0, level=0).apply(
-        resampling,
-        resampling_method=kwargs.get("resampling_method", None),
-        random_state=kwargs.get("resampling_random_state", 42),
-    )
-    data_resampled.index = data_resampled.index.droplevel(1)
-
-    x_resampled: ndarray = data_resampled.drop(columns=["label"], inplace=False).values
-    y_resampled: ndarray = data_resampled["label"].values
-    groups: ndarray = data_resampled.index.get_level_values(0).values
-
-    results = []
     # NOTE: we still set a single seed, from which we generate a bunch of other
     # random seeds to be fed to the algorithm
     set_numpy_seed(generator_seeds[0])
@@ -99,12 +85,168 @@ def run_cross_validation_prediction(
     set_numpy_seed(generator_seeds[1])
     random_states_folds = randint(0, int(2**32 - 1), n_seeds_to_test_folds)
 
+    set_numpy_seed(generator_seeds[2])
+    random_states_undersampling = randint(0, int(2**32 - 1), n_seeds_to_undersample)
+
+    x = x.reshape((x.shape[0], -1))
+    data = DataFrame(x, index=groups)
+    data["label"] = y
+
+    results = []
     all_results: list[list[DataFrame]] = []
-    for random_state_folds in tqdm(
-        random_states_folds,
-        desc="Random states folds progress:",
+
+    for random_state_undersampling in tqdm(
+        random_states_undersampling,
+        desc="Random states undersampling progress",
+        colour="red",
+        disable=True if len(random_states_undersampling) <= 2 else False,
+    ):
+        data_resampled = data.groupby(axis=0, level=0).apply(
+            resampling,
+            resampling_method=kwargs.get("resampling_method", None),
+            random_state=random_state_undersampling,
+        )
+        data_resampled.index = data_resampled.index.droplevel(1)
+
+        x_resampled: ndarray = data_resampled.drop(
+            columns=["label"], inplace=False
+        ).values
+        y_resampled: ndarray = data_resampled["label"].values
+        groups: ndarray = data_resampled.index.get_level_values(0).values
+
+        for random_state_folds in tqdm(
+            random_states_folds,
+            desc="Random states folds progress",
+            colour="blue",
+            disable=True if len(random_states_folds) <= 2 else False,
+        ):
+            for random_state_classifier in tqdm(
+                random_states_classifiers,
+                desc="Random states classifiers progress",
+                colour="green",
+                disable=True if len(random_states_classifiers) <= 2 else False,
+            ):
+                # NOTE: the fold generation should be fixed, to limit the accuracy
+                # be due exclusively to starting confitions in the algorithm
+                folds = StratifiedKFold(
+                    n_splits=n_fols, random_state=random_state_folds, shuffle=True
+                ).split(x_resampled, y_resampled)
+
+                custom_method: Callable | None = kwargs.get(
+                    "custom_fold_run_method", None
+                )
+                if custom_method is None:
+                    all_models: list[DataFrame] = Parallel(
+                        n_jobs=kwargs.get("n_jobs", -1)
+                    )(
+                        delayed(run_fold)(
+                            train_index,
+                            test_index,
+                            x_resampled,
+                            y_resampled,
+                            random_state_classifier,
+                            classifiers=kwargs.get("classifiers", "all"),
+                        )
+                        for train_index, test_index in folds
+                    )
+                else:
+                    custom_method: Callable
+                    all_models: list[DataFrame] = Parallel(
+                        n_jobs=kwargs.get("n_jobs", -1)
+                    )(
+                        delayed(custom_method)(
+                            train_index,
+                            test_index,
+                            x_resampled,
+                            y_resampled,
+                            random_state_classifier,
+                            classifiers=kwargs.get("classifiers", "all"),
+                        )
+                        for train_index, test_index in folds
+                    )
+                all_results.append(all_models)
+
+                averages = (
+                    pd.concat(all_models)
+                    .groupby(level=0)
+                    .mean()
+                    .sort_values(by="Accuracy", ascending=False)
+                )
+                standard_deviations = (
+                    pd.concat(all_models)
+                    .groupby(level=0)
+                    .std()
+                    .sort_values(by="Accuracy", ascending=False)
+                )
+                standard_errors = standard_deviations / (n_fols**0.5)
+                results.append(
+                    pd.concat(
+                        [averages, standard_errors],
+                        axis=1,
+                        keys=["Average", "Standard error"],
+                    )
+                )
+
+    averages_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
+        .droplevel(axis=1, level=0)
+        .sort_values(by=("Accuracy"), ascending=False)
+    )
+
+    errors_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(
+            lambda x: ((x.loc[:, IndexSlice["Standard error", :]] ** 2).sum()) ** 0.5
+            / (
+                n_seeds_to_test_classifiers
+                * n_seeds_to_test_folds
+                * n_seeds_to_undersample
+            )
+        )
+        .droplevel(axis=1, level=0)
+        .sort_values(by="Accuracy", ascending=False)
+    )
+    return (
+        pd.concat(
+            [averages_seeds, errors_seeds], axis=1, keys=["Average", "Standard error"]
+        ),
+        all_results,
+    )
+
+
+def run_opposite_side_prediction(
+    features_right: ndarray,
+    labels_right: ndarray,
+    groups_right: ndarray,
+    features_left: ndarray,
+    labels_left: ndarray,
+    groups_left: ndarray,
+    which_comparison: str,
+    generator_seeds: tuple[int, int] = [42, 666],
+    n_seeds_to_test_classifiers: int = 10,
+    n_seeds_to_undersample: int = 10,
+):
+    set_numpy_seed(generator_seeds[0])
+    random_states_classifiers = randint(
+        0, int(2**32 - 1), n_seeds_to_test_classifiers
+    )
+
+    # NOTE: to avoid dependencies between the seeds for the classifiers and those
+    # for the cross validation, two "main" seeds are required, from which then
+    # generate all of the others. This also allows reproducibility of the code.
+    set_numpy_seed(generator_seeds[1])
+    random_states_undersample = randint(0, int(2**32 - 1), n_seeds_to_undersample)
+
+    results = []
+    all_results: list[list[DataFrame]] = []
+    for random_state_undersample in tqdm(
+        random_states_undersample,
+        desc="Random states undersample progress:",
         colour="blue",
-        disable=True if len(random_states_folds) <= 2 else False,
+        disable=True if len(random_states_undersample) <= 2 else False,
     ):
         for random_state_classifier in tqdm(
             random_states_classifiers,
@@ -112,58 +254,36 @@ def run_cross_validation_prediction(
             colour="green",
             disable=True if len(random_states_classifiers) <= 2 else False,
         ):
-            # NOTE: the fold generation should be fixed, to limit the accuracy
-            # be due exclusively to starting confitions in the algorithm
-            folds = StratifiedKFold(
-                n_splits=n_fols, random_state=random_state_folds, shuffle=True
-            ).split(x_resampled, y_resampled)
+            clf = LazyClassifier(predictions=True, random_state=random_state_classifier)
 
-            custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
-            if custom_method is None:
-                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
-                    delayed(run_fold)(
-                        train_index,
-                        test_index,
-                        x_resampled,
-                        y_resampled,
-                        random_state_classifier,
-                        classifiers=kwargs.get("classifiers", "all"),
-                    )
-                    for train_index, test_index in folds
+            x_resampled_rx, y_resampled_rx, _ = local_resampling(
+                features_right,
+                labels_right,
+                groups_right,
+                seed=random_state_undersample,
+            )
+            x_resampled_lx, y_resampled_lx, _ = local_resampling(
+                features_left, labels_left, groups_left, seed=random_state_undersample
+            )
+            if which_comparison == "rxlx":
+                models, _ = clf.fit(
+                    x_resampled_rx, x_resampled_lx, y_resampled_rx, y_resampled_lx
+                )
+            elif which_comparison == "lxrx":
+                models, _ = clf.fit(
+                    x_resampled_lx, x_resampled_rx, y_resampled_lx, y_resampled_rx
                 )
             else:
-                custom_method: Callable
-                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
-                    delayed(custom_method)(
-                        train_index,
-                        test_index,
-                        x_resampled,
-                        y_resampled,
-                        random_state_classifier,
-                        classifiers=kwargs.get("classifiers", "all"),
-                    )
-                    for train_index, test_index in folds
+                raise ValueError(
+                    f"which_comparison must be either 'rxlx' or 'lxrx'. Received {which_comparison}"
                 )
-            all_results.append(all_models)
 
-            averages = (
-                pd.concat(all_models)
-                .groupby(level=0)
-                .mean()
-                .sort_values(by="Accuracy", ascending=False)
-            )
-            standard_deviations = (
-                pd.concat(all_models)
-                .groupby(level=0)
-                .std()
-                .sort_values(by="Accuracy", ascending=False)
-            )
-            standard_errors = standard_deviations / 5**0.5
+            all_results.append([models])
             results.append(
                 pd.concat(
-                    [averages, standard_errors],
+                    [models],
                     axis=1,
-                    keys=["Average", "Standard error"],
+                    keys=["Average"],
                 )
             )
 
@@ -179,8 +299,8 @@ def run_cross_validation_prediction(
         pd.concat(results)
         .groupby(level=0)
         .apply(
-            lambda x: (x.loc[:, IndexSlice["Standard error", :]] ** 2).sum() ** 0.5
-            / (n_seeds_to_test_classifiers * n_seeds_to_test_folds)
+            lambda x: x.loc[:, IndexSlice["Average", :]].std()
+            / ((n_seeds_to_test_classifiers * n_seeds_to_undersample) ** 0.5)
         )
         .droplevel(axis=1, level=0)
         .sort_values(by="Accuracy", ascending=False)

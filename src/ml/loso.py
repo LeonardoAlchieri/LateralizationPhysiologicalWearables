@@ -145,7 +145,7 @@ def LOSO(
     else:
         # NOTE: the custom method should have a specific input
         method_to_train = custom_method
-        
+
     if n_jobs == 1:
         scores = [
             method_to_train(
@@ -186,7 +186,14 @@ def LOSO(
 
 
 def run_same_side_classifications(
-    x, y, folds, n_seeds_to_test_classifiers: int = 30, n_jobs: int = -1, **kwargs
+    x: ndarray,
+    y: ndarray,
+    folds: ndarray,
+    generator_seeds: tuple[int, int] = (42, 69),
+    n_seeds_to_undersample: int = 10,
+    n_seeds_to_test_classifiers: int = 10,
+    n_jobs: int = -1,
+    **kwargs,
 ) -> tuple[DataFrame, list[list[DataFrame]]]:
     """
     The run_same_side_classifications function takes in a set of feature
@@ -215,65 +222,85 @@ def run_same_side_classifications(
     being "Average" and "Standard error", and the bottom level being
     "Accuracy", "ROC AUC", "F1 score", and "Balanced accuracy".
     """
-    data = DataFrame(x, index=folds)
-    data["label"] = y
-    data_resampled = data.groupby(axis=0, level=0).apply(resampling)
-    x_resampled = data_resampled.drop(columns=["label"], inplace=False).values
-    y_resampled = data_resampled["label"].values
-    folds_resampled = data_resampled.index.get_level_values(0).values
 
-    results = []
     # NOTE: we still set a single seed, from which we generate a bunch of other
     # random seeds to be fed to the algorithm
-    set_numpy_seed(42)
+    set_numpy_seed(generator_seeds[0])
     random_states_classifiers = randint(
         0, int(2**32 - 1), n_seeds_to_test_classifiers
     )
 
-    all_results: list[list[DataFrame]] = []
-    for random_state_classifier in tqdm(
-        random_states_classifiers,
-        desc="Random states classifiers progress:",
-        colour="green",
-    ):
-        # TODO: we should iterate over different random states for the fold
-        # generation as well, but independent from the random seeds for the algorithm
-        classifier = LazyClassifier
-        all_models = LOSO(
-            groups_train=folds_resampled,
-            groups_test=folds_resampled,
-            x_train=x_resampled,
-            x_test=x_resampled,
-            y_train=y_resampled,
-            y_test=y_resampled,
-            ml_model=classifier,
-            classifier_seed=random_state_classifier,
-            n_jobs=n_jobs,
-            classifiers=kwargs.get("classifiers", "all"),
-            augment_data=kwargs.get("augment_data", False),
-            augmentation_params=kwargs.get("augmentation_params", None),
-            custom_fold_run_method=kwargs.get("custom_fold_run_method", None),
-        )
-        all_results.append(all_models)
+    set_numpy_seed(generator_seeds[1])
+    random_states_undersampling = randint(0, int(2**32 - 1), n_seeds_to_undersample)
 
-        averages = (
-            concat(all_models)
-            .groupby(level=0)
-            .mean()
-            .sort_values(by="Accuracy", ascending=False)
+    x = x.reshape((x.shape[0], -1))
+    data = DataFrame(x, index=folds)
+    data["label"] = y
+
+    results = []
+    all_results: list[list[DataFrame]] = []
+    for random_state_undersampling in tqdm(
+        random_states_undersampling,
+        desc="Random states undersampling progress",
+        colour="red",
+        disable=True if len(random_states_undersampling) <= 2 else False,
+    ):
+        data_resampled = data.groupby(axis=0, level=0).apply(
+            resampling,
+            resampling_method=kwargs.get("resampling_method", None),
+            random_state=random_state_undersampling,
         )
-        standard_deviations = (
-            concat(all_models)
-            .groupby(level=0)
-            .std()
-            .sort_values(by="Accuracy", ascending=False)
-        )
-        standard_errors = standard_deviations / 5**0.5
-        results.append(
-            concat(
-                [averages, standard_errors], axis=1, keys=["Average", "Standard error"]
+        data_resampled.index = data_resampled.index.droplevel(1)
+
+        x_resampled = data_resampled.drop(columns=["label"], inplace=False).values
+        y_resampled = data_resampled["label"].values
+        folds_resampled = data_resampled.index.get_level_values(0).values
+
+        for random_state_classifier in tqdm(
+            random_states_classifiers,
+            desc="Random states classifiers progress:",
+            colour="green",
+        ):
+            # TODO: we should iterate over different random states for the fold
+            # generation as well, but independent from the random seeds for the algorithm
+            classifier = LazyClassifier
+            all_models = LOSO(
+                groups_train=folds_resampled,
+                groups_test=folds_resampled,
+                x_train=x_resampled,
+                x_test=x_resampled,
+                y_train=y_resampled,
+                y_test=y_resampled,
+                ml_model=classifier,
+                classifier_seed=random_state_classifier,
+                n_jobs=n_jobs,
+                classifiers=kwargs.get("classifiers", "all"),
+                augment_data=kwargs.get("augment_data", False),
+                augmentation_params=kwargs.get("augmentation_params", None),
+                custom_fold_run_method=kwargs.get("custom_fold_run_method", None),
             )
-        )
+            all_results.append(all_models)
+
+            averages = (
+                concat(all_models)
+                .groupby(level=0)
+                .mean()
+                .sort_values(by="Accuracy", ascending=False)
+            )
+            standard_deviations = (
+                concat(all_models)
+                .groupby(level=0)
+                .std()
+                .sort_values(by="Accuracy", ascending=False)
+            )
+            standard_errors = standard_deviations / (len(set(folds.tolist())) ** 0.5)
+            results.append(
+                concat(
+                    [averages, standard_errors],
+                    axis=1,
+                    keys=["Average", "Standard error"],
+                )
+            )
 
     averages_seeds = (
         concat(results)
@@ -288,7 +315,7 @@ def run_same_side_classifications(
         .groupby(level=0)
         .apply(
             lambda x: (x.loc[:, IndexSlice["Standard error", :]] ** 2).sum() ** 0.5
-            / (n_seeds_to_test_classifiers)
+            / (n_seeds_to_test_classifiers * n_seeds_to_undersample)
         )
         .droplevel(axis=1, level=0)
         .sort_values(by="Accuracy", ascending=False)
@@ -329,6 +356,7 @@ def under_sampling(
     tuple[ndarray, ndarray, ndarray]
         A tuple containing the resampled features, target labels, and fold labels.
     """
+    x = x.reshape((x.shape[0], -1))
     data = DataFrame(x, index=folds)
     data["label"] = y
     data_resampled = data.groupby(axis=0, level=0).apply(
@@ -450,6 +478,180 @@ def run_different_classifications(
         .apply(
             lambda x: (x.loc[:, IndexSlice["Standard error", :]] ** 2).sum() ** 0.5
             / (n_seeds_to_test_classifiers)
+        )
+        .droplevel(axis=1, level=0)
+        .sort_values(by="Accuracy", ascending=False)
+    )
+    return (
+        pd.concat(
+            [averages_seeds, errors_seeds], axis=1, keys=["Average", "Standard error"]
+        ),
+        all_results,
+    )
+
+
+def run_opposite_side_prediction(
+    features_right: ndarray,
+    labels_right: ndarray,
+    groups_right: ndarray,
+    features_left: ndarray,
+    labels_left: ndarray,
+    groups_left: ndarray,
+    which_comparison: str,
+    generator_seeds: tuple[int, int] = [42, 666],
+    n_seeds_to_test_classifiers: int = 10,
+    n_seeds_to_undersample: int = 10,
+    n_jobs: int = -1,
+    **kwargs,
+) -> tuple[DataFrame, list[list[DataFrame]]]:
+    """
+    Run multiple iterations of different classifiers on the resampled training and testing data,
+    and return a DataFrame with the average accuracy and standard error of the different models.
+
+    Parameters
+    ----------
+    x_train : ndarray
+        The features of the training data.
+    x_test : ndarray
+        The features of the testing data.
+    y_train : ndarray
+        The target labels of the training data.
+    y_test : ndarray
+        The target labels of the testing data.
+    folds_train : int
+        The number of folds to generate for the training data.
+    folds_test : int
+        The number of folds to generate for the testing data.
+    n_jobs : int
+        The number of CPU cores to use for parallel processing.
+
+    Returns
+    -------
+    DataFrame
+        A DataFrame containing the average accuracy and standard error of the different models.
+    """
+    set_numpy_seed(generator_seeds[0])
+    random_states_classifiers = randint(
+        0, int(2**32 - 1), n_seeds_to_test_classifiers
+    )
+
+    # NOTE: to avoid dependencies between the seeds for the classifiers and those
+    # for the cross validation, two "main" seeds are required, from which then
+    # generate all of the others. This also allows reproducibility of the code.
+    set_numpy_seed(generator_seeds[1])
+    random_states_undersample = randint(0, int(2**32 - 1), n_seeds_to_undersample)
+
+    results = []
+    all_results: list[list[DataFrame]] = []
+
+    for random_state_undersample in tqdm(
+        random_states_undersample,
+        desc="Random states undersample progress:",
+        colour="blue",
+        disable=True if len(random_states_undersample) <= 2 else False,
+    ):
+        if which_comparison == "rxlx":
+            (
+                x_train_resampled,
+                y_train_resampled,
+                folds_train_resampled,
+            ) = under_sampling(
+                features_right,
+                labels_right,
+                groups_right,
+                RandomUnderSampler,
+                random_state=random_state_undersample,
+            )
+            x_test_resampled, y_test_resampled, folds_test_resampled = under_sampling(
+                features_left,
+                labels_left,
+                groups_left,
+                RandomUnderSampler,
+                random_state=random_state_undersample,
+            )
+        elif which_comparison == "lxrx":
+            (
+                x_train_resampled,
+                y_train_resampled,
+                folds_train_resampled,
+            ) = under_sampling(
+                features_left,
+                labels_left,
+                groups_left,
+                RandomUnderSampler,
+                random_state=random_state_undersample,
+            )
+            x_test_resampled, y_test_resampled, folds_test_resampled = under_sampling(
+                features_right,
+                labels_right,
+                groups_right,
+                RandomUnderSampler,
+                random_state=random_state_undersample,
+            )
+        else:
+            raise ValueError(
+                f"which_comparison must be either 'rxlx' or 'lxrx'. Received {which_comparison}"
+            )
+
+        for random_state_classifier in tqdm(
+            random_states_classifiers,
+            desc="Random states classifiers progress",
+            colour="green",
+        ):
+            # TODO: we should iterate over different random states for the fold
+            # generation as well, but independent from the random seeds for the algorithm
+            classifier = LazyClassifier
+            all_models = LOSO(
+                groups_train=folds_train_resampled,
+                groups_test=folds_test_resampled,
+                x_train=x_train_resampled,
+                x_test=x_test_resampled,
+                y_train=y_train_resampled,
+                y_test=y_test_resampled,
+                ml_model=classifier,
+                classifier_seed=random_state_classifier,
+                n_jobs=n_jobs,
+                classifiers=kwargs.get("classifiers", "all"),
+            )
+            all_results.append(all_models)
+
+            averages = (
+                pd.concat(all_models)
+                .groupby(level=0)
+                .mean()
+                .sort_values(by="Accuracy", ascending=False)
+            )
+            standard_deviations = (
+                pd.concat(all_models)
+                .groupby(level=0)
+                .std()
+                .sort_values(by="Accuracy", ascending=False)
+            )
+            standard_errors = standard_deviations / (
+                len(set(groups_right.tolist())) ** 0.5
+            )
+            results.append(
+                pd.concat(
+                    [averages, standard_errors],
+                    axis=1,
+                    keys=["Average", "Standard error"],
+                )
+            )
+
+    averages_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
+        .droplevel(axis=1, level=0)
+        .sort_values(by=("Accuracy"), ascending=False)
+    )
+
+    errors_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(
+            lambda x: (x.loc[:, IndexSlice["Standard error", :]] ** 2).sum() ** 0.5
+            / (n_seeds_to_test_classifiers * n_seeds_to_undersample)
         )
         .droplevel(axis=1, level=0)
         .sort_values(by="Accuracy", ascending=False)

@@ -51,12 +51,17 @@ def resampling(
 
 
 def local_resampling(
-    x, y, groups, resampling_method: BaseUnderSampler = RandomUnderSampler
-):
+    x: ndarray,
+    y: ndarray,
+    groups: ndarray,
+    resampling_method: BaseUnderSampler = RandomUnderSampler,
+    seed: int = 42,
+):  
+    x = x.reshape((x.shape[0], -1))
     data = DataFrame(x, index=groups)
     data["label"] = y
     data_resampled = data.groupby(axis=0, level=0).apply(
-        resampling, resampling_method=resampling_method
+        resampling, resampling_method=resampling_method, random_state=seed
     )
     x_resampled = data_resampled.drop(columns=["label"], inplace=False).values
     y_resampled = data_resampled["label"].values
