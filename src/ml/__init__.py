@@ -20,7 +20,10 @@ from scipy.ndimage import gaussian_filter
 
 
 def resampling(
-    df: DataFrame,
+    df: DataFrame = None,
+    x: ndarray| None = None,
+    y: ndarray | None = None,
+    labels: list[str] | None = None,
     resampling_method: BaseUnderSampler | None = None,
     random_state: int = 42,
 ) -> DataFrame:
@@ -31,18 +34,36 @@ def resampling(
         )
         resampling_method = RandomUnderSampler
 
-    x = df.drop(columns=["label"], inplace=False).values
-    if len(df["label"].unique()) == 1:
-        warn(
-            f"Only one class in the dataset. Removing current user {df.name}",
-            RuntimeWarning,
-        )
-        print(
-            f"Only one class in the dataset. Removing current user {df.name}",
-            RuntimeWarning,
-        )
-        return None
-    y = df["label"].values
+    if df is not None:
+        x = df.drop(columns=["label"], inplace=False).values
+        if len(df["label"].unique()) == 1:
+            warn(
+                f"Only one class in the dataset. Removing current user {df.name}",
+                RuntimeWarning,
+            )
+            print(
+                f"Only one class in the dataset. Removing current user {df.name}",
+                RuntimeWarning,
+            )
+            return None
+        y = df["label"].values
+    else:
+        if x is None or y is None or labels is None:
+            raise ValueError(
+                "Either a DataFrame or x, y and labels must be provided."
+            )
+        else:
+            if len(set(labels)) == 1:
+                warn(
+                    f"Only one class in the dataset. Removing current user {df.name}",
+                    RuntimeWarning,
+                )
+                print(
+                    f"Only one class in the dataset. Removing current user {df.name}",
+                    RuntimeWarning,
+                )
+                return None
+        
     cc = resampling_method(random_state=random_state)
     x_resampled, y_resampled = cc.fit_resample(x, y)
     result = DataFrame(x_resampled)

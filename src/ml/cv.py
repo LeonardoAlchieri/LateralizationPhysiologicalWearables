@@ -1,4 +1,5 @@
-from typing import Callable
+from typing import Callable, Iterable
+from itertools import product
 
 import pandas as pd
 from joblib import Parallel, delayed
@@ -14,16 +15,41 @@ from src.ml import resampling, local_resampling
 
 
 def run_fold(
-    train_index, test_index, x_resampled, y_resampled, random_state_classifier, **kwargs
+    train_index: Iterable,
+    test_index: Iterable,
+    x_full: ndarray,
+    y_full: ndarray,
+    groups: ndarray,
+    random_state_classifier: int,
+    random_state_undersampling: int,
+    resampling_method: Callable | None = None,
+    **kwargs,
 ):
-    x_train, x_test = x_resampled[train_index], x_resampled[test_index]
-    y_train, y_test = y_resampled[train_index], y_resampled[test_index]
+    x_train, x_test = x_full[train_index], x_full[test_index]
+    y_train, y_test = y_full[train_index], y_full[test_index]
+    groups_train, groups_test = groups[train_index], groups[test_index]
+
+    x_train = x_train.reshape((x_train.shape[0], -1))
+    data_train = DataFrame(x_train, index=groups_train)
+    data_train["label"] = y_train
+
+    data_resampled_train = data_train.groupby(axis=0, level=0).apply(
+        resampling,
+        resampling_method=resampling_method,
+        random_state=random_state_undersampling,
+    )
+    data_resampled_train.index = data_resampled_train.index.droplevel(1)
+    x_resampled_train: ndarray = data_resampled_train.drop(
+        columns=["label"], inplace=False
+    ).values
+    y_resampled_train: ndarray = data_resampled_train["label"].values
+
     clf = LazyClassifier(
         predictions=True,
         random_state=random_state_classifier,
         classifiers=kwargs.get("classifiers", "all"),
     )
-    models, _ = clf.fit(x_train, x_test, y_train, y_test)
+    models, _ = clf.fit(x_resampled_train, x_test, y_resampled_train, y_test)
     return models
 
 
@@ -95,97 +121,81 @@ def run_cross_validation_prediction(
     results = []
     all_results: list[list[DataFrame]] = []
 
-    for random_state_undersampling in tqdm(
-        random_states_undersampling,
-        desc="Random states undersampling progress",
-        colour="red",
-        disable=True if len(random_states_undersampling) <= 2 else False,
+    for random_state_folds, random_state_undersampling in tqdm(
+        product(random_states_folds, random_states_undersampling),
+        desc="Random states (and undersampling) folds progress",
+        colour="blue",
+        disable=True
+        if len(product(random_states_folds, random_states_undersampling)) <= 2
+        else False,
     ):
-        data_resampled = data.groupby(axis=0, level=0).apply(
-            resampling,
-            resampling_method=kwargs.get("resampling_method", None),
-            random_state=random_state_undersampling,
-        )
-        data_resampled.index = data_resampled.index.droplevel(1)
+        x_full: ndarray = data.drop(columns=["label"], inplace=False).values
+        y_full: ndarray = data["label"].values
+        groups: ndarray = data.index.get_level_values(0).values
 
-        x_resampled: ndarray = data_resampled.drop(
-            columns=["label"], inplace=False
-        ).values
-        y_resampled: ndarray = data_resampled["label"].values
-        groups: ndarray = data_resampled.index.get_level_values(0).values
+        # NOTE: the fold generation should be fixed, to limit the accuracy
+        # be due exclusively to starting confitions in the algorithm
+        folds = StratifiedKFold(
+            n_splits=n_fols, random_state=random_state_folds, shuffle=True
+        ).split(x_full, y_full)
 
-        for random_state_folds in tqdm(
-            random_states_folds,
-            desc="Random states folds progress",
-            colour="blue",
-            disable=True if len(random_states_folds) <= 2 else False,
+        for random_state_classifier in tqdm(
+            random_states_classifiers,
+            desc="Random states classifiers progress",
+            colour="green",
+            disable=True if len(random_states_classifiers) <= 2 else False,
         ):
-            for random_state_classifier in tqdm(
-                random_states_classifiers,
-                desc="Random states classifiers progress",
-                colour="green",
-                disable=True if len(random_states_classifiers) <= 2 else False,
-            ):
-                # NOTE: the fold generation should be fixed, to limit the accuracy
-                # be due exclusively to starting confitions in the algorithm
-                folds = StratifiedKFold(
-                    n_splits=n_fols, random_state=random_state_folds, shuffle=True
-                ).split(x_resampled, y_resampled)
+            custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
+            if custom_method is None:
+                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
+                    delayed(run_fold)(
+                        train_index,
+                        test_index,
+                        x_full,
+                        y_full,
+                        groups,
+                        random_state_classifier,
+                        classifiers=kwargs.get("classifiers", "all"),
+                        resampling_method=kwargs.get("resampling_method", None),
+                    )
+                    for train_index, test_index in folds
+                )
+            else:
+                custom_method: Callable
+                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
+                    delayed(custom_method)(
+                        train_index,
+                        test_index,
+                        x_full,
+                        y_full,
+                        groups,
+                        random_state_classifier,
+                        classifiers=kwargs.get("classifiers", "all"),
+                    )
+                    for train_index, test_index in folds
+                )
+            all_results.append(all_models)
 
-                custom_method: Callable | None = kwargs.get(
-                    "custom_fold_run_method", None
+            averages = (
+                pd.concat(all_models)
+                .groupby(level=0)
+                .mean()
+                .sort_values(by="Accuracy", ascending=False)
+            )
+            standard_deviations = (
+                pd.concat(all_models)
+                .groupby(level=0)
+                .std()
+                .sort_values(by="Accuracy", ascending=False)
+            )
+            standard_errors = standard_deviations / (n_fols**0.5)
+            results.append(
+                pd.concat(
+                    [averages, standard_errors],
+                    axis=1,
+                    keys=["Average", "Standard error"],
                 )
-                if custom_method is None:
-                    all_models: list[DataFrame] = Parallel(
-                        n_jobs=kwargs.get("n_jobs", -1)
-                    )(
-                        delayed(run_fold)(
-                            train_index,
-                            test_index,
-                            x_resampled,
-                            y_resampled,
-                            random_state_classifier,
-                            classifiers=kwargs.get("classifiers", "all"),
-                        )
-                        for train_index, test_index in folds
-                    )
-                else:
-                    custom_method: Callable
-                    all_models: list[DataFrame] = Parallel(
-                        n_jobs=kwargs.get("n_jobs", -1)
-                    )(
-                        delayed(custom_method)(
-                            train_index,
-                            test_index,
-                            x_resampled,
-                            y_resampled,
-                            random_state_classifier,
-                            classifiers=kwargs.get("classifiers", "all"),
-                        )
-                        for train_index, test_index in folds
-                    )
-                all_results.append(all_models)
-
-                averages = (
-                    pd.concat(all_models)
-                    .groupby(level=0)
-                    .mean()
-                    .sort_values(by="Accuracy", ascending=False)
-                )
-                standard_deviations = (
-                    pd.concat(all_models)
-                    .groupby(level=0)
-                    .std()
-                    .sort_values(by="Accuracy", ascending=False)
-                )
-                standard_errors = standard_deviations / (n_fols**0.5)
-                results.append(
-                    pd.concat(
-                        [averages, standard_errors],
-                        axis=1,
-                        keys=["Average", "Standard error"],
-                    )
-                )
+            )
 
     averages_seeds = (
         pd.concat(results)
@@ -267,11 +277,11 @@ def run_opposite_side_prediction(
             )
             if which_comparison == "rxlx":
                 models, _ = clf.fit(
-                    x_resampled_rx, x_resampled_lx, y_resampled_rx, y_resampled_lx
+                    x_resampled_rx, features_left, y_resampled_rx, labels_left
                 )
             elif which_comparison == "lxrx":
                 models, _ = clf.fit(
-                    x_resampled_lx, x_resampled_rx, y_resampled_lx, y_resampled_rx
+                    x_resampled_lx, features_right, y_resampled_lx, labels_right
                 )
             else:
                 raise ValueError(
