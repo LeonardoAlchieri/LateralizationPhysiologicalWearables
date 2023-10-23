@@ -10,6 +10,7 @@ from matplotlib.patches import Patch
 from matplotlib.pyplot import (
     close,
     cm,
+    rc,
     figure,
     legend as make_legend,
     plot,
@@ -493,6 +494,10 @@ def plot_binary_labels(
     title: str,
     dataset_name: str,
     figsize: int,
+    small_fontsize: int = 10,
+    medium_fontsize: int = 14,
+    large_fontsize: int = 18,
+    legend_params: dict = dict(bbox_to_anchor=(0.9, 1), loc='best', borderaxespad=0),
     output_folder: str = "./visualizations/",
 ):
     # set_seaborn(font_scale=1)
@@ -508,7 +513,15 @@ def plot_binary_labels(
     rcParams["font.family"] = "STIXGeneral"
     
     # increase font size
-    rcParams.update({"font.size": 14})
+    
+    rc('font', size=small_fontsize)          # controls default text sizes
+    rc('axes', titlesize=medium_fontsize)     # fontsize of the axes title
+    rc('axes', labelsize=large_fontsize)    # fontsize of the x and y labels
+    rc('xtick', labelsize=small_fontsize)    # fontsize of the tick labels
+    rc('ytick', labelsize=small_fontsize)    # fontsize of the tick labels
+    rc('legend', fontsize=medium_fontsize)    # legend fontsize
+    rc('figure', titlesize=large_fontsize)  # fontsize of the figure title
+    rcParams.update({"font.size": medium_fontsize})
 
     fig, ax = subplots(figsize=(figsize, figsize * golden_ratio))
     ax1 = barplot(data=counts, x="side", y="count", hue="label")
@@ -519,7 +532,7 @@ def plot_binary_labels(
     with_hue(ax1, percentages, 2, 2)
 
     figtitle(title, fontsize=18)
-    make_legend(bbox_to_anchor=(0.9, 1), loc="upper left", borderaxespad=0)
+    make_legend(**legend_params)
     output_path = join_paths(output_folder, f"label_distribution_{dataset_name}.pdf")
     savefig(output_path, bbox_inches="tight")
     show()

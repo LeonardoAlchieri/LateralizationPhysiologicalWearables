@@ -458,7 +458,7 @@ def remove_empty_sessions(data_dict: dict[str, dict[str, dict[str, Series]]]):
 def parallel_iteration(func):
     """Method to decorate a function to run over the nested dictionary in parallel."""
 
-    def func_wrapper(data, n_jobs, *args, **kwargs):
+    def func_wrapper(data: dict[str, dict[str, DataFrame, Series]], n_jobs, *args, **kwargs):
         # n_jobs = -1
 
         if n_jobs == 1:

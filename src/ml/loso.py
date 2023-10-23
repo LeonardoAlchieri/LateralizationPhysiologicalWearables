@@ -12,7 +12,6 @@ from tqdm.auto import tqdm
 
 from src.ml import resampling, data_augmentation
 
-
 def train_score_single_model(
     groups_train: ndarray[str],
     groups_test: ndarray[str],
@@ -91,7 +90,6 @@ def train_score_single_model(
     )
     models.columns.name = user
     return models
-
 
 def LOSO(
     groups_train: list[str],

@@ -72,6 +72,48 @@ def gashis_artefact_detection(
     return data_w_artifacts
 
 
+@blockPrinting
+def gashis_artefact_detection_2(
+    data: dict[str, dict[str, DataFrame, Series]],
+    # n_jobs: int = 1,
+    window_size: int = 4,
+    **kwargs,
+):
+    def intermediate_func(session_data: DataFrame | Series):
+        try:
+            data_w_artifacts = compute_eda_artifacts(
+            data=session_data,
+            show_database=True,
+            convert_dataframe=True,
+            output_path=None,
+            window_size=window_size,
+            return_vals=True,
+        )[1].set_index("Time", inplace=False)
+        except ValueError as e:
+            print(f'Error: {e}')
+            data_w_artifacts = DataFrame(session_data.values, index=session_data.index, columns=["EDA"])
+            data_w_artifacts['Artifact'] = 0
+        data_w_artifacts.attrs = session_data.attrs
+        only_artifacts = data_w_artifacts[data_w_artifacts['Artifact']]
+        return only_artifacts
+
+    results = {
+        side: {
+            user: {
+                session_name: intermediate_func(session_data=session_data)
+                for session_name, session_data in user_data.items()
+            }
+            for user, user_data in tqdm(
+                data[side].items(),
+                desc=f'Filtering for side "{side}"',
+                colour="green",
+            )
+        }
+        for side in data.keys()
+    }
+    return results
+
+
 @parallel_iteration
 def acc_artefact_detection(
     acc_magitude_data: dict[str, dict[str, dict[str, Series | DataFrame]]],
@@ -199,7 +241,7 @@ def main():
                 f"Artefact window size must be provided when using artefact detection method 1."
             )
         # FIXME: not working anymore
-        eda_data = gashis_artefact_detection(
+        artifacts = gashis_artefact_detection_2(
             data=eda_data, window_size=artefact_window_size, n_jobs=n_jobs
         )
     else:
@@ -241,7 +283,7 @@ def main():
     if experiment_time is not None:
         eda_data = segment_over_experiment_time(eda_data, experiment_time)
     eda_data = remove_empty_sessions(eda_data)
-    
+
     logger.info("Cutting data to shortest series")
     eda_data = cut_to_shortest_series(data=eda_data)
 
@@ -306,7 +348,9 @@ def main():
         )
 
     # FIXME: remove hardcoded sampling frequency. Should take automatically from each dataframe
-    eda_data_phasic, eda_data_tonic = apply_cvxeda_decomposition(eda_data=eda_data_filtered, n_jobs=n_jobs, sampling_frequecy=4)
+    eda_data_phasic, eda_data_tonic = apply_cvxeda_decomposition(
+        eda_data=eda_data_filtered, n_jobs=n_jobs, sampling_frequecy=4
+    )
 
     if plots:
         make_lineplot(

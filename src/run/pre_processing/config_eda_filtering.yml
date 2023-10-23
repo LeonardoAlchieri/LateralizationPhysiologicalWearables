@@ -19,6 +19,6 @@ device: "E4"
 concat_sessions: True
 subset_data: False # this should be used for debugging
 
-artefact_detection: 0 # if 0, no detection. If 1, using Gashi's method. 2 for ACC based method
+artefact_detection: 1 # if 0, no detection. If 1, using Gashi's method. 2 for ACC based method
 artefact_window_size: 5 # necessary parameter for artefact_detection 1 only
 acc_threshold: # set the thresold for ACC cutoff based for artefact_detection 2 method only
