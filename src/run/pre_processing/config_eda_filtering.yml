@@ -1,6 +1,8 @@
-path_to_main_folder: "/Users/leonardoalchieri/Datasets/MWC2022_Sleep/sleep_data"
-path_to_save_folder: "./data.nosync/mwc2022/filtered_artifacts"
-# path_to_experiment_time: "./data.nosync/mwc2022/experiment_time.csv"
+# path_to_main_folder: "/Users/leonardoalchieri/Datasets/MWC2022_Sleep/sleep_data"
+path_to_main_folder: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
+path_to_save_folder: "./data.nosync/usilaughs/filtered_complete_cut"
+# path_to_experiment_info: "./data.nosync/mwc2022/all_experimento_info.csv" # this is used for MWC2022 to remove the sessions that do not represent a sleep night label
+path_to_experiment_time: "./data.nosync/usilaughs/experiment_time.csv" # mandatory for usilaughs
 # acc_data_path: "./data.nosync/usilaughs/filtered/*/ACC/*.parquet"
 
 # accepted values: "standardize", "min_max", "none", "robust_scaling_with_irq", 
@@ -12,10 +14,10 @@ n_jobs: -1 # -1 for "all cores"
 plots: False
 clean_plots: False
 
-mode: 2  # 1 for USIlaughs, 2 for MWC2022
+mode: 1  # 1 for USIlaughs, 2 for MWC2022
 device: "E4"
 concat_sessions: True
-subset_data: False
+subset_data: False # this should be used for debugging
 
 artefact_detection: 1 # if 0, no detection. If 1, using Gashi's method. 2 for ACC based method
 artefact_window_size: 5 # necessary parameter for artefact_detection 1 only

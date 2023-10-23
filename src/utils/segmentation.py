@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Literal
 
 from numpy import isnan, nan, ndarray
@@ -5,6 +6,8 @@ from pandas import DataFrame, IndexSlice, Series, Timedelta, Timestamp
 from tqdm.auto import tqdm
 
 from src.utils.misc import get_all_sessions
+
+logger = getLogger("segmentation")
 
 
 def get_session_moment(
@@ -43,46 +46,68 @@ def get_session_moment(
 
 
 def organize_segmented_data(
-    data_segmented_left: list[tuple], data_segmented_right: list[tuple], artefact: bool
+    data_segmented_left: list[tuple],
+    data_segmented_right: list[tuple],
+    artefact: bool,
+    correct_segment_lenth: int,
 ) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray, ndarray]:
+    # get index of segments that are not the correct shape
+    left_idx = [
+        (idx, idx2)
+        for idx, segments in enumerate(data_segmented_left)
+        for idx2, val in enumerate(segments)
+        if val[0].shape[0] != correct_segment_lenth
+    ]
+    right_idx = [
+        (idx, idx2)
+        for idx, segments in enumerate(data_segmented_right)
+        for idx2, val in enumerate(segments)
+        if val[0].shape[0] != correct_segment_lenth
+    ]
+    # join the two lists, without duplicates
+    idx = list(set(left_idx + right_idx))
+    logger.info(
+        f"Found {len(idx)} segments with incorrect shape, which is {len(idx) / len([_ for el in data_segmented_left for _ in el]) * 100}% of the data"
+    )
+
     values_left = [
         val[0]
-        for segments in data_segmented_left
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_left)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
     values_right = [
         val[0]
-        for segments in data_segmented_right
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_right)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
 
     labels_left = [
         val[1]
-        for segments in data_segmented_left
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_left)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
     labels_right = [
         val[1]
-        for segments in data_segmented_right
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_right)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
 
     groups_left = [
         val[2]
-        for segments in data_segmented_left
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_left)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
 
     groups_right = [
         val[2]
-        for segments in data_segmented_right
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_right)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
     if not artefact:
         return (
@@ -96,16 +121,16 @@ def organize_segmented_data(
     else:
         artefacts_left = [
             val[3]
-            for segments in data_segmented_left
-            for val in segments
-            if not isnan(val[1])
+            for i, segments in enumerate(data_segmented_left)
+            for j, val in enumerate(segments)
+            if not isnan(val[1]) and (i, j) not in idx
         ]
 
     artefacts_right = [
         val[3]
-        for segments in data_segmented_right
-        for val in segments
-        if not isnan(val[1])
+        for i, segments in enumerate(data_segmented_right)
+        for j, val in enumerate(segments)
+        if not isnan(val[1]) and (i, j) not in idx
     ]
     return (
         values_left,
@@ -128,12 +153,13 @@ def segment_info(
     user: str,
     mode: int,
     artefact: bool,
+    components: list[str],
 ):
     if not artefact:
         return (
             session_data.loc[
                 IndexSlice[session, start:end],
-                "mixed-EDA",
+                components,
             ].values,
             get_session_moment(start, end, session_info, mode),
             user,
@@ -142,7 +168,7 @@ def segment_info(
         return (
             session_data.loc[
                 IndexSlice[session, start:end],
-                "mixed-EDA",
+                components,
             ].values,
             get_session_moment(start, end, session_info, mode),
             user,
@@ -162,6 +188,7 @@ def segment(
     # sessions_all: list[str] | None = ["experiment"],
     mode: int = 1,
     artefact: bool = False,
+    components: list[str] = ["mixed-EDA", "phasic-EDA", "tonic-EDA"],
 ):
     data_segmented_left: list[tuple] = []
     data_segmented_right: list[tuple] = []
@@ -219,6 +246,7 @@ def segment(
                     session=session,
                     user=user,
                     session_data=session_data_left,
+                    components=components,
                 )
                 for start, end in zip(starts_left, ends_left)
             ]
@@ -232,10 +260,17 @@ def segment(
                     session=session,
                     user=user,
                     session_data=session_data_right,
+                    components=components,
                 )
                 for start, end in zip(starts_right, ends_right)
             ]
+
             data_segmented_left.append(segments_left)
             data_segmented_right.append(segments_right)
 
-    return organize_segmented_data(data_segmented_left, data_segmented_right, artefact)
+    return organize_segmented_data(
+        data_segmented_left,
+        data_segmented_right,
+        artefact,
+        segment_size_in_sampling_rate,
+    )

@@ -337,6 +337,18 @@ def get_cliff_bin(
         else:
             raise ValueError(f"{x} is not in the dull range")
 
+def correct_session_name(session_name: str) -> str:
+    session_time: str = session_name.split("-")[1]
+    if session_time[0] == "0":
+        session_id_corrected: Timestamp = to_datetime(
+            session_name.split("-")[0], format="%y%m%d"
+        )
+    else:
+        session_id_corrected: Timestamp = to_datetime(
+            session_name.split("-")[0], format="%y%m%d"
+        ) + Timedelta("1D")
+    session_id_corrected: str = str(session_id_corrected.date())
+    return session_id_corrected
 
 def prepare_data_for_concatenation(
     data: Series, session_name: str, mode: int = 1
@@ -348,16 +360,9 @@ def prepare_data_for_concatenation(
     if mode == 1:
         session_id_corrected = session_name
     elif mode == 2:
-        session_time: str = session_name.split("-")[1]
-        if session_time[0] == "0":
-            session_id_corrected: Timestamp = to_datetime(
-                session_name.split("-")[0], format="%y%m%d"
-            )
-        else:
-            session_id_corrected: Timestamp = to_datetime(
-                session_name.split("-")[0], format="%y%m%d"
-            ) + Timedelta("1D")
-        session_id_corrected: str = str(session_id_corrected.date())
+        # session_id_corrected = correct_session_name(session_name)
+        # NOTE: I moved the session name correction before everything
+        session_id_corrected = session_name
     else:
         raise ValueError(f"Mode not supported. Please use 1 or 2. Received {mode}")
 
@@ -453,7 +458,7 @@ def remove_empty_sessions(data_dict: dict[str, dict[str, dict[str, Series]]]):
 def parallel_iteration(func):
     """Method to decorate a function to run over the nested dictionary in parallel."""
 
-    def func_wrapper(data, n_jobs, *args, **kwargs):
+    def func_wrapper(data: dict[str, dict[str, DataFrame, Series]], n_jobs, *args, **kwargs):
         # n_jobs = -1
 
         if n_jobs == 1:

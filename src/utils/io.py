@@ -8,6 +8,7 @@ from pandas import (
     DataFrame,
     IndexSlice,
     MultiIndex,
+    Timestamp,
     Series,
     read_csv,
     read_parquet,
@@ -426,29 +427,94 @@ def read_experiment_info(path: str, mode: int = 1) -> DataFrame:
 def filter_sleep_nights(
     data: defaultdict[str, defaultdict[str, Series | DataFrame]],
     experiment_info: DataFrame,
+    format_data: str = "processed",
 ):
     users = get_all_users(data)
 
-    counter = 0
+    if format_data == "processed":
+        counter = 0
+        for user in tqdm(sorted(users), desc="flitering user progress", colour="red"):
+            sessions_all = get_all_sessions(
+                user_data_left=data["left"][user], user_data_right=data["right"][user]
+            )
+            for session in sessions_all:
+                if (user, session) not in experiment_info.index:
+                    counter += 1
+                    for side in data.keys():
+                        sessions_to_keep = [
+                            data_ses
+                            for data_ses in data[side][user]
+                            .index.get_level_values(0)
+                            .unique()
+                            if data_ses != session
+                        ]
+                        data[side][user] = data[side][user].loc[
+                            IndexSlice[sessions_to_keep, :], :
+                        ]
+                else:
+                    continue
+        print(f"Removed {counter} sessions")
+    elif format_data == "raw":
+        counter = 0
+        for user in tqdm(sorted(users), desc="flitering user progress", colour="red"):
+            sessions_all = get_all_sessions(
+                user_data_left=data["left"][user], user_data_right=data["right"][user]
+            )
+            for session in sessions_all:
+                if (user, session) not in experiment_info.index:
+                    counter += 1
+                    for side in data.keys():
+                        data[side][user] = {
+                            key: val
+                            for key, val in data[side][user].items()
+                            if key != session
+                        }
+                else:
+                    continue
+        print(f"Removed {counter} sessions")
+    else:
+        raise ValueError(
+            f"Format {format_data} not recognized. Accepted values are 'processed' or 'raw'"
+        )
+    return data
+
+
+def get_closest_timestamp(t1: Timestamp, t2: Timestamp, how: str = "latest"):
+    if how == "latest":
+        return max(t1, t2)
+    elif how == "earliest":
+        return min(t1, t2)
+    else:
+        raise ValueError(f"how {how} not recognized")
+
+
+def cut_to_shortest_series(
+    data: defaultdict[str, defaultdict[str, Series | DataFrame]]
+) -> defaultdict[str, defaultdict[str, Series | DataFrame]]:
+    users = get_all_users(data)
+
     for user in tqdm(sorted(users), desc="flitering user progress", colour="red"):
         sessions_all = get_all_sessions(
             user_data_left=data["left"][user], user_data_right=data["right"][user]
         )
         for session in sessions_all:
-            if (user, session) not in experiment_info.index:
-                counter += 1
-                for side in data.keys():
-                    sessions_to_keep = [
-                        data_ses
-                        for data_ses in data[side][user]
-                        .index.get_level_values(0)
-                        .unique()
-                        if data_ses != session
-                    ]
-                    data[side][user] = data[side][user].loc[
-                        IndexSlice[sessions_to_keep, :], :
-                    ]
-            else:
-                continue
-    print(f"Removed {counter} sessions")
+            start_timestamp = get_closest_timestamp(
+                t1=data["left"][user][session].index[0],
+                t2=data["right"][user][session].index[0],
+                how="latest",
+            )
+
+            end_timestamp = get_closest_timestamp(
+                t1=data["left"][user][session].index[-1],
+                t2=data["right"][user][session].index[-1],
+                how="earliest",
+            )
+
+            data["left"][user][session] = data["left"][user][session].loc[
+                start_timestamp:end_timestamp
+            ]
+            data["right"][user][session] = data["right"][user][session].loc[
+                start_timestamp:end_timestamp
+            ]
+            
     return data
