@@ -7,12 +7,9 @@ from numpy import ndarray, savez
 
 path.append(".")
 from src.utils.experiment_info import ExperimentInfo
-from src.utils.io import (
-    filter_sleep_nights,
-    load_config,
-    load_processed_data
-)
+from src.utils.io import filter_sleep_nights, load_config, load_processed_data
 from src.utils.segmentation import segment
+from src.utils import filter_user
 
 basicConfig(filename="logs/run_segmentation.log", level=DEBUG)
 
@@ -35,6 +32,7 @@ def main():
     eda_sample_rate: int = configs["eda_sample_rate"]
     artifacts: bool = configs["artifacts"]
     components: list[str] = configs["components"]
+    users_to_remove: list[str] = configs["users_to_remove"]
 
     experiment_info = ExperimentInfo(path=path_to_experiment_info, mode=mode)
     experiment_info.filter_correct_times(inplace=True)
@@ -44,7 +42,13 @@ def main():
             data=eda_data, experiment_info=experiment_info.to_df()
         )
 
+    eda_data["left"] = filter_user(
+        users_to_filter=users_to_remove, eda_data=eda_data["left"]
+    )
     users_in_left_side = set(eda_data["left"].keys())
+    eda_data["right"] = filter_user(
+        users_to_filter=users_to_remove, eda_data=eda_data["right"]
+    )
     users_in_right_side = set(eda_data["right"].keys())
     logger.debug(
         f"Number of users with both left and right hand data: {len(users_in_left_side & users_in_right_side)}"
