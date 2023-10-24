@@ -75,6 +75,8 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "degree": [2, 3, 4, 5],
         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
         "shrinking": [True, False],
+        # sometimes, it hangs and does not converge
+        "max_iter": [1000000],
     },
     LinearSVC: {
         "C": [0.1, 1.0, 10.0, 100.0, 1000.0],
@@ -186,32 +188,13 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
 }
 
 # CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
-#     RandomForestClassifier: {
-#         "n_estimators": [10, 50, 100, 200, 500],
-#         "max_depth": [None, 10, 20, 30, 50],
-#         "min_samples_split": [2, 5, 10, 15, 20],
-#         "min_samples_leaf": [1, 2, 4, 8, 16],
-#         "max_features": ["auto", "sqrt", "log2"],
+#     NuSVC: {
+#         # large nus does not make it converge
+#         "nu": [0.1, 0.3, 0.5, 0.7, 0.9],
+#         "kernel": ["linear", "poly", "rbf", "sigmoid"],
+#         "degree": [2, 3, 4, 5],
+#         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
+#         "shrinking": [True, False],
+#         "max_iter": [1000000],
 #     },
-#     LGBMClassifier: {
-#         "n_estimators": [100, 200, 300, 400, 500],
-#         "learning_rate": [0.01, 0.1, 0.2, 0.3, 0.5],
-#         "max_depth": [-1, 10, 20, 30, 50],
-#         "min_child_samples": [20, 50, 100, 200, 300],
-#         "subsample": [0.7, 0.8, 0.9, 1.0],
-#     },
-#     ExtraTreesClassifier: {
-#         "n_estimators": [10, 50, 100, 200, 500],
-#         "max_depth": [None, 10, 20, 30, 50],
-#         "min_samples_split": [2, 5, 10, 15, 20],
-#         "min_samples_leaf": [1, 2, 4, 8, 16],
-#         "max_features": ["auto", "sqrt", "log2"],
-#     },
-#     XGBClassifier: {
-#         "n_estimators": [100, 200, 300, 400, 500],
-#         "learning_rate": [0.01, 0.1, 0.2, 0.3, 0.5],
-#         "max_depth": [3, 4, 5, 6, 7],
-#         "min_child_weight": [1, 2, 3, 4, 5],
-#         "subsample": [0.7, 0.8, 0.9, 1.0],
-#     }
 # }
