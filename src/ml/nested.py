@@ -1,14 +1,18 @@
 from itertools import product
+
 # setup logger
 from logging import getLogger
 from typing import Any, Callable, Generator, Iterable
 
 import pandas as pd
 from joblib import Parallel, delayed
-from lazypredict.Supervised import (LazyClassifier,
-                                    categorical_transformer_high,
-                                    categorical_transformer_low,
-                                    get_card_split, numeric_transformer)
+from lazypredict.Supervised import (
+    LazyClassifier,
+    categorical_transformer_high,
+    categorical_transformer_low,
+    get_card_split,
+    numeric_transformer,
+)
 from numpy import ndarray
 from numpy import number as npnumber
 from numpy.random import randint
@@ -19,13 +23,18 @@ from sklearn.compose import ColumnTransformer
 from sklearn.experimental import enable_halving_search_cv
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.model_selection import HalvingRandomSearchCV, StratifiedKFold
-from sklearn.pipeline import make_pipeline
+from sklearn.pipeline import make_pipeline, Pipeline
 from tqdm.auto import tqdm
 
 from src.ml import local_resampling, resampling
 from src.ml.classifier_list import CLASSIFIERS_HYPERPARAMETER_LIST
 
 logger = getLogger("nested")
+
+import os
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_DYNAMIC'] = 'FALSE'
 
 
 def preprocessing(
@@ -50,6 +59,41 @@ def preprocessing(
     return preprocessor
 
 
+def perform_grid_search_estimation(classifier: ClassifierMixin, 
+                                   random_state_classifier: int, 
+                                   preprocessor: Pipeline, 
+                                   search_space: dict[str, Any],
+                                   folds_inner: list,
+                                   x_train: ndarray,
+                                   y_train: ndarray,
+                                   x_test: ndarray,
+                                   y_test: ndarray,
+                                   n_jobs: int = 1,):
+    logger.debug(f"Current classifier: {classifier.__name__}")
+    if "random_state" in classifier().get_params().keys():
+        model: ClassifierMixin = classifier(random_state=random_state_classifier)
+    else:
+        model: ClassifierMixin = classifier()
+    # execute search
+    clf = make_pipeline(
+        preprocessor,
+        HalvingRandomSearchCV(
+            model,
+            search_space,
+            scoring="accuracy",
+            cv=folds_inner,
+            refit=True,
+            n_jobs=1,
+        ),
+    )
+    result = clf.fit(x_train.copy(), y_train.copy())
+    yhat = result.predict(x_test)
+    acc = balanced_accuracy_score(y_test, yhat)
+    logger.debug(f"Accuracy for {classifier.__name__}: {acc}")
+    return classifier.__name__, acc
+    # models[classifier.__name__] = acc
+
+
 def fit_with_hyperparameters(
     x_train: ndarray,
     y_train: ndarray,
@@ -58,46 +102,43 @@ def fit_with_hyperparameters(
     random_state_classifier: int,
     random_state_fold: int,
     n_inner_folds: int,
+    n_jobs: int = 1,
 ) -> DataFrame:
+    
     folds_inner: Generator = StratifiedKFold(
         n_splits=n_inner_folds, random_state=random_state_fold, shuffle=True
     ).split(x_train, y_train)
     folds_inner = list(folds_inner)
 
     preprocessor = preprocessing(x_train)
-    models = {}
-    for classifier, search_space in tqdm(
-        CLASSIFIERS_HYPERPARAMETER_LIST.items(),
-        desc="Classifier Grid Search Progress",
-        colour="white",
-    ):
-        print(f'Current classifier: {classifier.__name__}')
-        if "random_state" in classifier().get_params().keys():
-            model: ClassifierMixin = classifier(random_state=random_state_classifier)
-        else:
-            model: ClassifierMixin = classifier()
-        # execute search
-        clf = make_pipeline(
-            preprocessor,
-            HalvingRandomSearchCV(
-                model,
-                search_space,
-                scoring="accuracy",
-                cv=folds_inner,
-                refit=True,
-                n_jobs=1,
-            ),
+    # models = {}
+    from sklearn.ensemble import RandomForestClassifier
+    
+    models: list[tuple[str, float]] = Parallel(n_jobs=n_jobs)(delayed(perform_grid_search_estimation)(
+            classifier=classifier,
+            random_state_classifier=random_state_classifier,
+            preprocessor=preprocessor,
+            search_space=search_space,
+            folds_inner=folds_inner,
+            x_train=x_train,
+            y_train=y_train,
+            x_test=x_test,
+            y_test=y_test
         )
-        result = clf.fit(x_train.copy(), y_train.copy())
-        yhat = result.predict(x_test)
-        acc = balanced_accuracy_score(y_test, yhat)
-        print(f"Accuracy for {classifier.__name__}: {acc}")
-        models[classifier.__name__] = acc
-        # print(f'Current classifier: {classifier.__name__}')
+        for classifier, search_space in 
+        # CLASSIFIERS_HYPERPARAMETER_LIST[[0]].items()
+        {
+      RandomForestClassifier: {
+        "n_estimators": [10, 50, 100, 200, 500],
+        "max_depth": [None, 10, 20, 30, 50],
+        "min_samples_split": [2, 5, 10, 15, 20],
+        "min_samples_leaf": [1, 2, 4, 8, 16],
+        "max_features": ["auto", "sqrt", "log2"],}      
+        }.items()
+    )
+    models: dict[str, float] = {k: v for k, v in models}
 
-    print('HERE')
     models = DataFrame.from_dict(models, orient="index", columns=["Balanced Accuracy"])
-    print('HERE2')
     return models
 
 
@@ -110,6 +151,7 @@ def run_hyper_fold(
     random_state_classifier: int,
     random_state_undersampling: int,
     random_state_fold: int,
+    n_jobs: int = 1,
     n_inner_folds: int = 3,
     resampling_method: Callable | None = None,
     **kwargs,
@@ -145,6 +187,7 @@ def run_hyper_fold(
         random_state_classifier=random_state_classifier,
         random_state_fold=random_state_fold,
         n_inner_folds=n_inner_folds,
+        n_jobs=n_jobs,
     )
 
     return models
@@ -219,7 +262,7 @@ def run_nested_cross_validation_prediction(
     results = []
     all_results: list[list[DataFrame]] = []
 
-    j=0
+    j = 0
     for random_state_fold, random_state_undersampling in tqdm(
         product(random_states_folds, random_states_undersampling),
         desc="Random fold states (and undersampling) folds progress",
@@ -243,21 +286,21 @@ def run_nested_cross_validation_prediction(
 
         folds = list(folds)
 
-        i=0
+        i = 0
         for random_state_classifier in tqdm(
             random_states_classifiers,
             desc="Random states classifiers progress",
-            colour="green", 
+            colour="green",
             disable=True if len(random_states_classifiers) <= 2 else False,
             total=len(random_states_classifiers),
         ):
             i += 1
             logger.debug(f"Current iteration for random state classifier: {i}")
-            
+
             custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
             if custom_method is None:
-                all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
-                    delayed(run_hyper_fold)(
+                all_models: list[DataFrame] = [
+                    run_hyper_fold(
                         train_index=train_index,
                         test_index=test_index,
                         x_full=x_full.copy(),
@@ -267,17 +310,16 @@ def run_nested_cross_validation_prediction(
                         random_state_undersampling=random_state_undersampling,
                         random_state_fold=random_state_fold,
                         n_inner_folds=n_inner_folds,
+                        n_jobs=kwargs.get("n_jobs", 1),
                         classifiers=kwargs.get("classifiers", "all"),
                         resampling_method=kwargs.get("resampling_method", None),
                     )
-                    for train_index, test_index in folds
-                )
-                print('HERE3')
+                    for train_index, test_index in tqdm(folds, desc='Outer folds progress', colour='red', disable=True if len(folds) <= 2 else False)
+                ]
             else:
                 raise NotImplementedError(
                     "Custom nested fold run method not implemented yet."
                 )
-            print('HERE4')
             all_results.append(all_models)
 
             averages = (
@@ -300,9 +342,9 @@ def run_nested_cross_validation_prediction(
                     keys=["Average", "Standard error"],
                 )
             )
-            print('Finished iteration and computed averages and standard errors')
+            print("Finished iteration and computed averages and standard errors")
 
-    print('Finished calculations. Computing final results.')
+    print("Finished calculations. Computing final results.")
     averages_seeds = (
         pd.concat(results)
         .groupby(level=0)
@@ -390,8 +432,8 @@ def run_opposite_side_prediction_hyper(
                 models = fit_with_hyperparameters(
                     x_train=x_resampled_rx,
                     y_train=y_resampled_rx,
-                    x_test=features_left,
-                    y_test=labels_left,
+                    x_test=features_left.reshape((features_left.shape[0], -1)),
+                    y_test=labels_left.reshape((labels_left.shape[0], -1)),
                     random_state_classifier=random_state_classifier,
                     random_state_fold=random_state_fold,
                     n_inner_folds=n_inner_folds,
