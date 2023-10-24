@@ -12,3 +12,7 @@ components:
   - "mixed-EDA"
   - "phasic-EDA"
   - "tonic-EDA"
+
+users_to_remove:
+  - "s092"
+  - "s089"

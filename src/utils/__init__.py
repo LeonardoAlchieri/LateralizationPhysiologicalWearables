@@ -1,26 +1,27 @@
-from numpy import datetime64, array, asarray, ndarray, mean
-from numpy import isnan, nan, sign
-from typing import Callable, Any
-from time import time
+import sys
+from collections import defaultdict
 from functools import wraps
 from logging import getLogger
-from sys import __stdout__
-import sys
-from tqdm.auto import tqdm
 from os import devnull
+from sys import __stdout__
+from time import time
+from typing import Any, Callable
+
+from joblib import Parallel, delayed
+from numpy import array, asarray, datetime64, isnan, mean, nan, ndarray, sign
 from pandas import (
     DataFrame,
-    Index,
-    Timestamp,
     DatetimeIndex,
+    Index,
     IndexSlice,
     MultiIndex,
-    date_range,
-    to_datetime,
     Series,
     Timedelta,
+    Timestamp,
+    date_range,
+    to_datetime,
 )
-from joblib import Parallel, delayed
+from tqdm.auto import tqdm
 
 logger = getLogger("utils")
 
@@ -337,6 +338,7 @@ def get_cliff_bin(
         else:
             raise ValueError(f"{x} is not in the dull range")
 
+
 def correct_session_name(session_name: str) -> str:
     session_time: str = session_name.split("-")[1]
     if session_time[0] == "0":
@@ -349,6 +351,7 @@ def correct_session_name(session_name: str) -> str:
         ) + Timedelta("1D")
     session_id_corrected: str = str(session_id_corrected.date())
     return session_id_corrected
+
 
 def prepare_data_for_concatenation(
     data: Series, session_name: str, mode: int = 1
@@ -458,7 +461,9 @@ def remove_empty_sessions(data_dict: dict[str, dict[str, dict[str, Series]]]):
 def parallel_iteration(func):
     """Method to decorate a function to run over the nested dictionary in parallel."""
 
-    def func_wrapper(data: dict[str, dict[str, DataFrame, Series]], n_jobs, *args, **kwargs):
+    def func_wrapper(
+        data: dict[str, dict[str, DataFrame, Series]], n_jobs, *args, **kwargs
+    ):
         # n_jobs = -1
 
         if n_jobs == 1:
@@ -486,8 +491,10 @@ def parallel_iteration(func):
                     intermediate_res.attrs = session_data.attrs
                     return intermediate_res
                 else:
-                #     new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
-                    raise NotImplementedError("Not implemented yet when the output is not a DataFrame")
+                    #     new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
+                    raise NotImplementedError(
+                        "Not implemented yet when the output is not a DataFrame"
+                    )
 
                 # return DataFrame(
                 #     intermediate_res,
@@ -539,10 +546,15 @@ def parallel_iteration(func):
                 if isinstance(intermediate_res, DataFrame):
                     # new_cols = intermediate_res.columns
                     intermediate_res.attrs = session_data.attrs
-                    return (session_name, intermediate_res,)
+                    return (
+                        session_name,
+                        intermediate_res,
+                    )
                 else:
-                #     new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
-                    raise NotImplementedError("Not implemented yet when the output is not a DataFrame")
+                    #     new_cols = session_data.columns if isinstance(session_data, DataFrame) else None
+                    raise NotImplementedError(
+                        "Not implemented yet when the output is not a DataFrame"
+                    )
 
                 # return (
                 #     session_name,
@@ -603,3 +615,14 @@ def parallel_iteration(func):
         return results
 
     return func_wrapper
+
+
+def filter_user(
+    users_to_filter: list[str],
+    eda_data: defaultdict[str, defaultdict[str, Series | DataFrame]],
+) -> defaultdict[str, defaultdict[str, Series | DataFrame]]:
+    return {
+        user_name: user_data
+        for user_name, user_data in eda_data.items()
+        if user_name not in users_to_filter
+    }
