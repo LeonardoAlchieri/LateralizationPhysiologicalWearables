@@ -1,13 +1,13 @@
-path_to_features_data: "./data.nosync/mwc2022/features/EDA_features_noart-2.npz"
-path_to_save_data_avgs: "./data.nosync/mwc2022/results/n_fold_avg.h5"
-path_to_save_data_all: "./data.nosync/mwc2022/results/n_fold_all.h5"
+path_to_features_data: "./data.nosync/USILaughs/features/EDA_features_noart-2.npz"
+path_to_save_data_avgs: "./data.nosync/USILaughs/results/n_fold_fix_avg.h5"
+path_to_save_data_all: "./data.nosync/USILaughs/results/n_fold_fix_all.h5"
 generator_seeds:
   - 42 
   - 69
   - 420
-n_seeds_to_test_classifiers: 10
-n_seeds_to_test_folds: 10
-n_seeds_to_undersample: 10
-n_fols: 5
+n_seeds_to_test_classifiers: 1
+n_seeds_to_test_folds: 1
+n_seeds_to_undersample: 1
+n_fols: 2
 
-n_jobs: 5
+n_jobs: -1

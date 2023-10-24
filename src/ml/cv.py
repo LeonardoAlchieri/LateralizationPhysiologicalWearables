@@ -126,7 +126,7 @@ def run_cross_validation_prediction(
         desc="Random states (and undersampling) folds progress",
         colour="blue",
         disable=True
-        if len(product(random_states_folds, random_states_undersampling)) <= 2
+        if len(list(product(random_states_folds, random_states_undersampling))) <= 2
         else False,
     ):
         x_full: ndarray = data.drop(columns=["label"], inplace=False).values
@@ -139,6 +139,8 @@ def run_cross_validation_prediction(
             n_splits=n_fols, random_state=random_state_folds, shuffle=True
         ).split(x_full, y_full)
 
+        folds = list(folds)
+
         for random_state_classifier in tqdm(
             random_states_classifiers,
             desc="Random states classifiers progress",
@@ -149,12 +151,13 @@ def run_cross_validation_prediction(
             if custom_method is None:
                 all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
                     delayed(run_fold)(
-                        train_index,
-                        test_index,
-                        x_full,
-                        y_full,
-                        groups,
-                        random_state_classifier,
+                        train_index=train_index,
+                        test_index=test_index,
+                        x_full=x_full.copy(),
+                        y_full=y_full.copy(),
+                        groups=groups.copy(),
+                        random_state_classifier=random_state_classifier,
+                        random_state_undersampling=random_state_undersampling,
                         classifiers=kwargs.get("classifiers", "all"),
                         resampling_method=kwargs.get("resampling_method", None),
                     )
@@ -164,13 +167,15 @@ def run_cross_validation_prediction(
                 custom_method: Callable
                 all_models: list[DataFrame] = Parallel(n_jobs=kwargs.get("n_jobs", -1))(
                     delayed(custom_method)(
-                        train_index,
-                        test_index,
-                        x_full,
-                        y_full,
-                        groups,
-                        random_state_classifier,
+                        train_index=train_index,
+                        test_index=test_index,
+                        x_full=x_full,
+                        y_full=y_full,
+                        groups=groups,
+                        random_state_classifier=random_state_classifier,
+                        random_state_undersampling=random_state_undersampling,
                         classifiers=kwargs.get("classifiers", "all"),
+                        resampling_method=kwargs.get("resampling_method", None),
                     )
                     for train_index, test_index in folds
                 )
@@ -180,13 +185,13 @@ def run_cross_validation_prediction(
                 pd.concat(all_models)
                 .groupby(level=0)
                 .mean()
-                .sort_values(by="Accuracy", ascending=False)
+                .sort_values(by="Balanced Accuracy", ascending=False)
             )
             standard_deviations = (
                 pd.concat(all_models)
                 .groupby(level=0)
                 .std()
-                .sort_values(by="Accuracy", ascending=False)
+                .sort_values(by="Balanced Accuracy", ascending=False)
             )
             standard_errors = standard_deviations / (n_fols**0.5)
             results.append(
@@ -202,7 +207,7 @@ def run_cross_validation_prediction(
         .groupby(level=0)
         .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
         .droplevel(axis=1, level=0)
-        .sort_values(by=("Accuracy"), ascending=False)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
     )
 
     errors_seeds = (
@@ -217,7 +222,7 @@ def run_cross_validation_prediction(
             )
         )
         .droplevel(axis=1, level=0)
-        .sort_values(by="Accuracy", ascending=False)
+        .sort_values(by="Balanced Accuracy", ascending=False)
     )
     return (
         pd.concat(
@@ -277,11 +282,17 @@ def run_opposite_side_prediction(
             )
             if which_comparison == "rxlx":
                 models, _ = clf.fit(
-                    x_resampled_rx, features_left, y_resampled_rx, labels_left
+                    X_train=x_resampled_rx,
+                    X_test=features_left.reshape((features_left.shape[0], -1)),
+                    y_train=y_resampled_rx,
+                    y_test=labels_left,
                 )
             elif which_comparison == "lxrx":
                 models, _ = clf.fit(
-                    x_resampled_lx, features_right, y_resampled_lx, labels_right
+                    X_train=x_resampled_lx,
+                    X_test=features_right.reshape((features_right.shape[0], -1)),
+                    y_train=y_resampled_lx,
+                    y_test=labels_right,
                 )
             else:
                 raise ValueError(
@@ -302,7 +313,7 @@ def run_opposite_side_prediction(
         .groupby(level=0)
         .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
         .droplevel(axis=1, level=0)
-        .sort_values(by=("Accuracy"), ascending=False)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
     )
 
     errors_seeds = (
@@ -313,7 +324,7 @@ def run_opposite_side_prediction(
             / ((n_seeds_to_test_classifiers * n_seeds_to_undersample) ** 0.5)
         )
         .droplevel(axis=1, level=0)
-        .sort_values(by="Accuracy", ascending=False)
+        .sort_values(by="Balanced Accuracy", ascending=False)
     )
     return (
         pd.concat(

@@ -9,15 +9,15 @@ from numpy import load
 
 path.append(".")
 from src.utils.io import load_config
-from src.ml.cv import run_cross_validation_prediction, run_opposite_side_prediction
+from src.ml.nested import run_nested_cross_validation_prediction, run_opposite_side_prediction_hyper
 
-basicConfig(filename="logs/run_n_fold.log", level=DEBUG)
+basicConfig(filename="logs/run_nested.log", level=DEBUG)
 
 logger = getLogger("main")
 
 
 def main():
-    path_to_config: str = "src/run/ml/config_n_fold.yml"
+    path_to_config: str = "src/run/ml/config_nested.yml"
 
     logger.info("Starting model training")
     configs: dict[str, Any] = load_config(path=path_to_config)
@@ -30,7 +30,8 @@ def main():
     n_seeds_to_test_classifiers: int = configs["n_seeds_to_test_classifiers"]
     n_seeds_to_test_folds: int = configs["n_seeds_to_test_folds"]
     n_seeds_to_undersample: int = configs["n_seeds_to_undersample"]
-    n_fols: int = configs["n_fols"]
+    n_folds_outer: int = configs["n_folds_outer"]
+    n_folds_inner: int = configs["n_folds_inner"]
     n_jobs: int = configs["n_jobs"]
 
     data: dict[str, Any] = load(path_to_features_data)
@@ -56,7 +57,7 @@ def main():
         (
             averaged_results_cv[side],
             all_results_cv[side],
-        ) = run_cross_validation_prediction(
+        ) = run_nested_cross_validation_prediction(
             x=side_features,
             y=side_labels,
             groups=side_groups,
@@ -64,7 +65,8 @@ def main():
             n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
             n_seeds_to_test_folds=n_seeds_to_test_folds,
             n_seeds_to_undersample=n_seeds_to_undersample,
-            n_fols=n_fols,
+            n_inner_folds=n_folds_inner,
+            n_outer_folds=n_folds_outer,
             n_jobs=n_jobs,
         )
 
@@ -72,7 +74,7 @@ def main():
         (
             averaged_results_cv[opposite_side],
             all_results_cv[opposite_side],
-        ) = run_opposite_side_prediction(
+        ) = run_opposite_side_prediction_hyper(
             features_right=features_right,
             labels_right=labels_right,
             groups_right=groups_right,
