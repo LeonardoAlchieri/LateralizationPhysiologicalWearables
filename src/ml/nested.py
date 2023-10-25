@@ -69,7 +69,7 @@ def perform_grid_search_estimation(classifier: ClassifierMixin,
                                    x_test: ndarray,
                                    y_test: ndarray,
                                    n_jobs: int = 1,):
-    logger.debug(f"Current classifier: {classifier.__name__}")
+    # logger.debug(f"Current classifier: {classifier.__name__}")
     if "random_state" in classifier().get_params().keys():
         model: ClassifierMixin = classifier(random_state=random_state_classifier)
     else:
@@ -90,7 +90,7 @@ def perform_grid_search_estimation(classifier: ClassifierMixin,
     result = clf.fit(x_train.copy(), y_train.copy())
     yhat = result.predict(x_test)
     acc = balanced_accuracy_score(y_test, yhat)
-    logger.debug(f"Accuracy for {classifier.__name__}: {acc}")
+    # logger.debug(f"Accuracy for {classifier.__name__}: {acc}")
     return classifier.__name__, acc
     # models[classifier.__name__] = acc
 
@@ -266,7 +266,7 @@ def run_nested_cross_validation_prediction(
         else False,
     ):
         j += 1
-        logger.debug(f"Current iteration for random fold states and undersampling: {j}")
+        # logger.debug(f"Current iteration for random fold states and undersampling: {j}")
         x_full: ndarray = data.drop(columns=["label"], inplace=False).values
         y_full: ndarray = data["label"].values
         groups: ndarray = data.index.get_level_values(0).values
@@ -288,7 +288,7 @@ def run_nested_cross_validation_prediction(
             total=len(random_states_classifiers),
         ):
             i += 1
-            logger.debug(f"Current iteration for random state classifier: {i}")
+            # logger.debug(f"Current iteration for random state classifier: {i}")
 
             custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
             if custom_method is None:
