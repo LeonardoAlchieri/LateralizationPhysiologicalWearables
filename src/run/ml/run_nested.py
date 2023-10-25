@@ -85,6 +85,7 @@ def main():
             generator_seeds=generator_seeds,
             n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
             n_seeds_to_undersample=n_seeds_to_undersample,
+            n_jobs=n_jobs,
         )
 
     # Create an HDF5 file
