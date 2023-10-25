@@ -1,4 +1,4 @@
-path_to_features_data: "./data.nosync/USILaughs/features/EDA_features_noart-2.npz"
+path_to_features_data: "./data.nosync/USILaughs/features/EDA_features_noart-3.npz"
 path_to_save_data_avgs: "./data.nosync/USILaughs/results/nested_avg.h5"
 path_to_save_data_all: "./data.nosync/USILaughs/results/nested_all.h5"
 generator_seeds:

@@ -74,6 +74,7 @@ def perform_grid_search_estimation(classifier: ClassifierMixin,
         model: ClassifierMixin = classifier(random_state=random_state_classifier)
     else:
         model: ClassifierMixin = classifier()
+        
     # execute search
     clf = make_pipeline(
         preprocessor,
@@ -126,15 +127,7 @@ def fit_with_hyperparameters(
             y_test=y_test
         )
         for classifier, search_space in 
-        # CLASSIFIERS_HYPERPARAMETER_LIST[[0]].items()
-        {
-      RandomForestClassifier: {
-        "n_estimators": [10, 50, 100, 200, 500],
-        "max_depth": [None, 10, 20, 30, 50],
-        "min_samples_split": [2, 5, 10, 15, 20],
-        "min_samples_leaf": [1, 2, 4, 8, 16],
-        "max_features": ["auto", "sqrt", "log2"],}      
-        }.items()
+        CLASSIFIERS_HYPERPARAMETER_LIST.items()
     )
     models: dict[str, float] = {k: v for k, v in models}
 
@@ -342,9 +335,9 @@ def run_nested_cross_validation_prediction(
                     keys=["Average", "Standard error"],
                 )
             )
-            print("Finished iteration and computed averages and standard errors")
+            # print("Finished iteration and computed averages and standard errors")
 
-    print("Finished calculations. Computing final results.")
+    # print("Finished calculations. Computing final results.")
     averages_seeds = (
         pd.concat(results)
         .groupby(level=0)
@@ -409,6 +402,7 @@ def run_opposite_side_prediction_hyper(
         product(random_states_folds, random_states_undersampling),
         desc="Random states (and undersampling) folds progress",
         colour="blue",
+        total=len(list(product(random_states_folds, random_states_undersampling))),
         disable=True
         if len(list(product(random_states_folds, random_states_undersampling))) <= 2
         else False,
