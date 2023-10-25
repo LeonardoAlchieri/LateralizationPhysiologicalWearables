@@ -42,13 +42,14 @@ def main():
             data=eda_data, experiment_info=experiment_info.to_df()
         )
 
-    eda_data["left"] = filter_user(
-        users_to_filter=users_to_remove, eda_data=eda_data["left"]
-    )
+    if users_to_remove is not None:
+        eda_data["left"] = filter_user(
+            users_to_filter=users_to_remove, eda_data=eda_data["left"]
+        )
+        eda_data["right"] = filter_user(
+            users_to_filter=users_to_remove, eda_data=eda_data["right"]
+        )
     users_in_left_side = set(eda_data["left"].keys())
-    eda_data["right"] = filter_user(
-        users_to_filter=users_to_remove, eda_data=eda_data["right"]
-    )
     users_in_right_side = set(eda_data["right"].keys())
     logger.debug(
         f"Number of users with both left and right hand data: {len(users_in_left_side & users_in_right_side)}"

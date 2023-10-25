@@ -3,6 +3,7 @@ from typing import Any
 from warnings import warn
 
 from neurokit2.eda import eda_peaks
+from pywt import wavedec
 from numpy import (
     apply_along_axis,
     array,
@@ -11,10 +12,16 @@ from numpy import (
     nanmax,
     nanmean,
     nanmin,
+    nansum,
+    nanmedian,
     nanstd,
+    log,
+    zeros,
     ndarray,
+    vstack
 )
 from scipy.stats import linregress
+from scipy.fft import fft
 
 logger = getLogger(__name__)
 
@@ -30,7 +37,110 @@ EDA_FEATURE_NAMES: list[str] = [
     "first_derivative_std_feat",
     "number_of_peaks_feat",
     "peaks_amplitude_feat",
+    "dc_term",
+    "sum_of_all_coefficients",
+    "information_entropy",
+    "spectral_energy",
 ]
+
+
+def calculate_wavelet_features(
+    signal: ndarray,
+) -> tuple[float, float, float, float, float, float]:
+    """
+    Calculates wavelet-based features for an EDA physiological signal.
+
+    Parameters:
+        signal (float): EDA physiological signal.
+
+    Returns:
+        dict: A tuple containing the calculated wavelet features.
+            - 'mean_1hz': Mean of wavelet coefficients at 1Hz.
+            - 'std_1hz': Standard deviation of wavelet coefficients at 1Hz.
+            - 'mean_2hz': Mean of wavelet coefficients at 2Hz.
+            - 'std_2hz': Standard deviation of wavelet coefficients at 2Hz.
+            - 'mean_4hz': Mean of wavelet coefficients at 4Hz.
+            - 'std_4hz': Standard deviation of wavelet coefficients at 4Hz.
+    """
+    # Perform discrete wavelet transform
+    wavelet_coefs = wavedec(signal, wavelet="db4", level=6)
+
+    def compute_feature_on_wavelet_coefs(wavelet_coef: ndarray):
+        mean_coef: float = nanmean(wavelet_coef)
+        std_coef: float = nanstd(wavelet_coef)
+        minimum_coef: float = nanmin(wavelet_coef)
+        maximum_coef: float = nanmax(wavelet_coef)
+        dynamic_range_coef: float = maximum_coef - minimum_coef
+        variance_coef: float = nanstd(wavelet_coef) ** 2
+        standard_error_coef: float = nanstd(wavelet_coef) / len(wavelet_coef)
+        return (
+            mean_coef,
+            std_coef,
+            minimum_coef,
+            maximum_coef,
+            dynamic_range_coef,
+            variance_coef,
+            standard_error_coef,
+        )
+
+    (
+        mean_1Hz,
+        std_1Hz,
+        minimum_1Hz,
+        maximum_1Hz,
+        dynamic_range_1Hz,
+        variance_1Hz,
+        standard_error_1Hz,
+    ) = compute_feature_on_wavelet_coefs(wavelet_coefs[5])
+
+    (
+        mean_2Hz,
+        std_2Hz,
+        minimum_2Hz,
+        maximum_2Hz,
+        dynamic_range_2Hz,
+        variance_2Hz,
+        standard_error_2Hz,
+    ) = compute_feature_on_wavelet_coefs(wavelet_coefs[4])
+
+    (
+        mean_4Hz,
+        std_4Hz,
+        minimum_4Hz,
+        maximum_4Hz,
+        dynamic_range_4Hz,
+        variance_4Hz,
+        standard_error_4Hz,
+    ) = compute_feature_on_wavelet_coefs(wavelet_coefs[3])
+
+    # mean_2hz: float = nanmean(wavelet_coefs[4])
+    # std_2hz: float = nanstd(wavelet_coefs[4])
+    # mean_4hz: float = nanmean(wavelet_coefs[3])
+    # std_4hz: float = nanstd(wavelet_coefs[3])
+
+    return (
+        mean_1Hz,
+        std_1Hz,
+        minimum_1Hz,
+        maximum_1Hz,
+        dynamic_range_1Hz,
+        variance_1Hz,
+        standard_error_1Hz,
+        mean_2Hz,
+        std_2Hz,
+        minimum_2Hz,
+        maximum_2Hz,
+        dynamic_range_2Hz,
+        variance_2Hz,
+        standard_error_2Hz,
+        mean_4Hz,
+        std_4Hz,
+        minimum_4Hz,
+        maximum_4Hz,
+        dynamic_range_4Hz,
+        variance_4Hz,
+        standard_error_4Hz,
+    )
 
 
 def get_eda_features(data: ndarray, sampling_rate: int = 4) -> ndarray:
@@ -60,7 +170,7 @@ def get_eda_features(data: ndarray, sampling_rate: int = 4) -> ndarray:
     data: ndarray = data[~isnan(data).any(axis=1)]
     logger.debug(f"Len of eda data after removal of NaN: {len(data)}")
     if len(data) == 0:
-        return array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        return zeros(len(EDA_FEATURE_NAMES))
     else:
         min_feat: float = nanmin(data, axis=0)
         max_feat: float = nanmax(data, axis=0)
@@ -120,7 +230,29 @@ def get_eda_features(data: ndarray, sampling_rate: int = 4) -> ndarray:
         # # extracted
         # peaks_amplitude_feat: float = sum(eda_peaks_result[1]["SCR_Amplitude"])
 
-        return array(
+        # frequency domain features (see Shkurta's references)
+        fft_transform: ndarray = fft(data, axis=0)
+
+        # dc term
+        dc_term: ndarray = abs(nanmean(fft_transform, axis=0))
+        # sum of all coefficients
+        sum_of_all_coefficients: ndarray = abs(nansum(fft_transform, axis=0))
+
+        # information entropy
+        def get_information_entropy(arr: ndarray, rate: int) -> ndarray:
+            # 1. Calculate the PSD of your signal by simply squaring the amplitude spectrum and scaling it by number of frequency bins.
+            psd: ndarray = (arr**2) / rate
+            # 2. Normalize the calculated PSD by dividing it by a total sum.
+            norm_psd = psd / nansum(psd)
+            return -nansum(norm_psd * log(norm_psd), axis=0)
+
+        information_entropy: ndarray = get_information_entropy(
+            arr=data, rate=sampling_rate
+        )
+        # spectral energy
+        spectral_energy = abs(nansum(data, axis=0)) / sampling_rate
+
+        return vstack(array(
             [
                 min_feat,
                 max_feat,
@@ -133,5 +265,9 @@ def get_eda_features(data: ndarray, sampling_rate: int = 4) -> ndarray:
                 first_derivative_std_feat,
                 number_of_peaks_feat,
                 peaks_amplitude_feat,
+                dc_term,
+                sum_of_all_coefficients,
+                information_entropy,
+                spectral_energy,
             ]
-        )
+        ))

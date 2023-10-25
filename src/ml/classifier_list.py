@@ -76,7 +76,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
         "shrinking": [True, False],
         # sometimes, it hangs and does not converge
-        "max_iter": [1000000],
+        "max_iter": [100000],
     },
     LinearSVC: {
         "C": [0.1, 1.0, 10.0, 100.0, 1000.0],

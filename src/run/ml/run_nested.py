@@ -70,6 +70,7 @@ def main():
             n_jobs=n_jobs,
         )
 
+    logger.info("Complete single side. Starting double side")
     for opposite_side in ["rxlx", "lxrx"]:
         (
             averaged_results_cv[opposite_side],

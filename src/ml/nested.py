@@ -255,7 +255,6 @@ def run_nested_cross_validation_prediction(
     results = []
     all_results: list[list[DataFrame]] = []
 
-    j = 0
     for random_state_fold, random_state_undersampling in tqdm(
         product(random_states_folds, random_states_undersampling),
         desc="Random fold states (and undersampling) folds progress",
@@ -265,7 +264,6 @@ def run_nested_cross_validation_prediction(
         if len(list(product(random_states_folds, random_states_undersampling))) <= 2
         else False,
     ):
-        j += 1
         # logger.debug(f"Current iteration for random fold states and undersampling: {j}")
         x_full: ndarray = data.drop(columns=["label"], inplace=False).values
         y_full: ndarray = data["label"].values
@@ -279,7 +277,6 @@ def run_nested_cross_validation_prediction(
 
         folds = list(folds)
 
-        i = 0
         for random_state_classifier in tqdm(
             random_states_classifiers,
             desc="Random states classifiers progress",
@@ -287,7 +284,6 @@ def run_nested_cross_validation_prediction(
             disable=True if len(random_states_classifiers) <= 2 else False,
             total=len(random_states_classifiers),
         ):
-            i += 1
             # logger.debug(f"Current iteration for random state classifier: {i}")
 
             custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
