@@ -89,6 +89,8 @@ def perform_grid_search_estimation(
             cv=folds_inner,
             refit=True,
             n_jobs=1,
+            random_state=random_state_classifier,
+            # error_score="raise",
         ),
     )
     result = clf.fit(x_train.copy(), y_train.copy())
@@ -113,8 +115,6 @@ def fit_with_hyperparameters(
     folds_inner = list(folds_inner)
 
     preprocessor = preprocessing(x_train)
-    # models = {}
-    from sklearn.ensemble import RandomForestClassifier
 
     models: list[tuple[str, float]] = [
         perform_grid_search_estimation(
@@ -134,6 +134,30 @@ def fit_with_hyperparameters(
 
     models = DataFrame.from_dict(models, orient="index", columns=["Balanced Accuracy"])
     return models
+
+
+def resample_train_data(
+    x_train: ndarray,
+    y_train: ndarray,
+    groups_train: list,
+    resampling_method: Callable,
+    random_state_undersampling: int,
+):
+    x_train = x_train.reshape((x_train.shape[0], -1))
+    data_train = DataFrame(x_train, index=groups_train)
+    data_train["label"] = y_train
+
+    data_resampled_train = data_train.groupby(axis=0, level=0).apply(
+        resampling,
+        resampling_method=resampling_method,
+        random_state=random_state_undersampling,
+    )
+    data_resampled_train.index = data_resampled_train.index.droplevel(1)
+    x_resampled_train: ndarray = data_resampled_train.drop(
+        columns=["label"], inplace=False
+    ).values
+    y_resampled_train: ndarray = data_resampled_train["label"].values
+    return x_resampled_train, y_resampled_train
 
 
 def run_hyper_fold(
@@ -157,20 +181,13 @@ def run_hyper_fold(
     y_train, y_test = y_full[train_index], y_full[test_index]
     groups_train, groups_test = groups[train_index], groups[test_index]
 
-    x_train = x_train.reshape((x_train.shape[0], -1))
-    data_train = DataFrame(x_train, index=groups_train)
-    data_train["label"] = y_train
-
-    data_resampled_train = data_train.groupby(axis=0, level=0).apply(
-        resampling,
+    x_resampled_train, y_resampled_train = resample_train_data(
+        x_train=x_train,
+        y_train=y_train,
+        groups_train=groups_train,
         resampling_method=resampling_method,
-        random_state=random_state_undersampling,
+        random_state_undersampling=random_state_undersampling,
     )
-    data_resampled_train.index = data_resampled_train.index.droplevel(1)
-    x_resampled_train: ndarray = data_resampled_train.drop(
-        columns=["label"], inplace=False
-    ).values
-    y_resampled_train: ndarray = data_resampled_train["label"].values
 
     models = fit_with_hyperparameters(
         x_train=x_resampled_train,
@@ -424,10 +441,10 @@ def compute_outer_folds_opposite_side(
         )
 
     return [models], pd.concat(
-            [models],
-            axis=1,
-            keys=["Average"],
-        )
+        [models],
+        axis=1,
+        keys=["Average"],
+    )
 
 
 def run_opposite_side_prediction_hyper(

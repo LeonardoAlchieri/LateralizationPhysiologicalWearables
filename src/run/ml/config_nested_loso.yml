@@ -1,0 +1,13 @@
+path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_freqfet-3.npz"
+path_to_save_data_avgs: "./data.nosync/usilaughs/results/loso_nested_avgTEST.h5"
+path_to_save_data_all: "./data.nosync/usilaughs/results/loso_nested_allTEST.h5"
+generator_seeds:
+  - 42 
+  - 69
+  - 420
+n_seeds_to_test_classifiers: 2
+n_seeds_to_test_folds: 2
+n_seeds_to_undersample: 2
+n_folds_inner: 5
+
+n_jobs: 8

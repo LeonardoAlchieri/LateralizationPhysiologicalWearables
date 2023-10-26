@@ -218,7 +218,7 @@ def run_same_side_classifications(
     each classifier seed, sorted by accuracy in descending order.
     The DataFrame has two levels of columns, with the top level
     being "Average" and "Standard error", and the bottom level being
-    "Accuracy", "ROC AUC", "F1 score", and "Balanced accuracy".
+    "Balanced Accuracy", "ROC AUC", "F1 score", and "Balanced accuracy".
     """
 
     # NOTE: we still set a single seed, from which we generate a bunch of other
@@ -283,13 +283,13 @@ def run_same_side_classifications(
                 concat(all_models)
                 .groupby(level=0)
                 .mean()
-                .sort_values(by="Accuracy", ascending=False)
+                .sort_values(by="Balanced Accuracy", ascending=False)
             )
             standard_deviations = (
                 concat(all_models)
                 .groupby(level=0)
                 .std()
-                .sort_values(by="Accuracy", ascending=False)
+                .sort_values(by="Balanced Accuracy", ascending=False)
             )
             standard_errors = standard_deviations / (len(set(folds.tolist())) ** 0.5)
             results.append(
@@ -305,7 +305,7 @@ def run_same_side_classifications(
         .groupby(level=0)
         .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
         .droplevel(axis=1, level=0)
-        .sort_values(by=("Accuracy"), ascending=False)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
     )
 
     errors_seeds = (
@@ -316,7 +316,7 @@ def run_same_side_classifications(
             / (n_seeds_to_test_classifiers * n_seeds_to_undersample)
         )
         .droplevel(axis=1, level=0)
-        .sort_values(by="Accuracy", ascending=False)
+        .sort_values(by="Balanced Accuracy", ascending=False)
     )
     return (
         concat(
@@ -447,15 +447,15 @@ def run_different_classifications(
             pd.concat(all_models)
             .groupby(level=0)
             .mean()
-            .sort_values(by="Accuracy", ascending=False)
+            .sort_values(by="Balanced Accuracy", ascending=False)
         )
         standard_deviations = (
             pd.concat(all_models)
             .groupby(level=0)
             .std()
-            .sort_values(by="Accuracy", ascending=False)
+            .sort_values(by="Balanced Accuracy", ascending=False)
         )
-        standard_errors = standard_deviations / 5**0.5
+        standard_errors = standard_deviations / len(all_models)**0.5
         results.append(
             pd.concat(
                 [averages, standard_errors], axis=1, keys=["Average", "Standard error"]
@@ -467,7 +467,7 @@ def run_different_classifications(
         .groupby(level=0)
         .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
         .droplevel(axis=1, level=0)
-        .sort_values(by=("Accuracy"), ascending=False)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
     )
 
     errors_seeds = (
@@ -478,7 +478,7 @@ def run_different_classifications(
             / (n_seeds_to_test_classifiers)
         )
         .droplevel(axis=1, level=0)
-        .sort_values(by="Accuracy", ascending=False)
+        .sort_values(by="Balanced Accuracy", ascending=False)
     )
     return (
         pd.concat(
@@ -617,13 +617,13 @@ def run_opposite_side_prediction(
                 pd.concat(all_models)
                 .groupby(level=0)
                 .mean()
-                .sort_values(by="Accuracy", ascending=False)
+                .sort_values(by="Balanced Accuracy", ascending=False)
             )
             standard_deviations = (
                 pd.concat(all_models)
                 .groupby(level=0)
                 .std()
-                .sort_values(by="Accuracy", ascending=False)
+                .sort_values(by="Balanced Accuracy", ascending=False)
             )
             standard_errors = standard_deviations / (
                 len(set(groups_right.tolist())) ** 0.5
@@ -641,7 +641,7 @@ def run_opposite_side_prediction(
         .groupby(level=0)
         .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
         .droplevel(axis=1, level=0)
-        .sort_values(by=("Accuracy"), ascending=False)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
     )
 
     errors_seeds = (
@@ -652,7 +652,7 @@ def run_opposite_side_prediction(
             / (n_seeds_to_test_classifiers * n_seeds_to_undersample)
         )
         .droplevel(axis=1, level=0)
-        .sort_values(by="Accuracy", ascending=False)
+        .sort_values(by="Balanced Accuracy", ascending=False)
     )
     return (
         pd.concat(
