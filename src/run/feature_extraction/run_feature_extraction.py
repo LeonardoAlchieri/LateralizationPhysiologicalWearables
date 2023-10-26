@@ -21,6 +21,7 @@ def main():
 
     logger.info("Starting model training")
     configs: dict[str, Any] = load_config(path=path_to_config)
+    n_jobs: int = configs["n_jobs"]
     logger.debug("Configs loaded")
     
     artifacts: bool = configs["artifacts"]
@@ -37,11 +38,11 @@ def main():
     groups_right: ndarray[str] = segmented_data["groups_right"]
     
     logger.info('Starting feature extraction')
-    features_left = Parallel(n_jobs=-1)(
+    features_left = Parallel(n_jobs=n_jobs)(
     delayed(get_eda_features)(value) for value in (values_left)
 )
     logger.info('Extracted for left side data')
-    features_right = Parallel(n_jobs=-1)(
+    features_right = Parallel(n_jobs=n_jobs)(
         delayed(get_eda_features)(value) for value in (values_right)
     )
     logger.info('Extracted for right side data')
