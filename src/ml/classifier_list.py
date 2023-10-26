@@ -44,6 +44,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "max_depth": [-1, 10, 20, 30, 50],
         "min_child_samples": [20, 50, 100, 200, 300],
         "subsample": [0.7, 0.8, 0.9, 1.0],
+        "verbose": [-1],
     },
     ExtraTreesClassifier: {
         "n_estimators": [10, 50, 100, 200, 500],
@@ -149,13 +150,11 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "n_neighbors": [3, 5, 7, 9, 11],
         "alpha": [0.1, 0.2, 0.3, 0.4, 0.5],
         "max_iter": [30],
-        "n_jobs": [None, -1],
     },
     LabelPropagation: {
         "kernel": ["knn", "rbf"],
         "n_neighbors": [3, 5, 7, 9, 11],
         "max_iter": [1000],
-        "n_jobs": [None, -1],
     },
     LogisticRegression: {
         "penalty": ["l2"],

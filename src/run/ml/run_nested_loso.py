@@ -35,17 +35,26 @@ def main():
     n_seeds_to_test_folds: int = configs["n_seeds_to_test_folds"]
     n_folds_inner: int = configs["n_folds_inner"]
     n_jobs: int = configs["n_jobs"]
+    debug_mode: bool = configs["debug_mode"]
 
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
     data: dict[str, Any] = load(path_to_features_data)
 
-    features_left = data["features_left"][:100]
-    features_right = data["features_right"][:100]
-    labels_left = data["labels_left"][:100]
-    labels_right = data["labels_right"][:100]
-    groups_left = data["groups_left"][:100]
-    groups_right = data["groups_right"][:100]
+    if debug_mode:
+        features_left = data["features_left"][:100]
+        features_right = data["features_right"][:100]
+        labels_left = data["labels_left"][:100]
+        labels_right = data["labels_right"][:100]
+        groups_left = data["groups_left"][:100]
+        groups_right = data["groups_right"][:100]
+    else:
+        features_left = data["features_left"]
+        features_right = data["features_right"]
+        labels_left = data["labels_left"]
+        labels_right = data["labels_right"]
+        groups_left = data["groups_left"]
+        groups_right = data["groups_right"]
 
     averaged_results_cv, all_results_cv = dict(), dict()
     for side, side_features, side_labels, side_groups in zip(
