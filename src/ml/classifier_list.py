@@ -19,13 +19,24 @@ from sklearn.svm import SVC, LinearSVC, NuSVC
 from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
 from xgboost import XGBClassifier
 
+
+# some hyperparameters were removed since they would either never converge on our data, take too long
+# or did not make sense. 
+# For example, we do not use l1 loss, since it leads to sparse solutions, and
+# it might not work with a combination of the other parameters.
+# Similar cases also apply to other hyperparameters.
+# For LinearDiscriminantAnalysis we also removed the "eigen" computation, 
+# since it would not converge most of the time
+# Same with "penalty" different than l2 for LogisticRegression: sometimes, it 
+# would fail due to combination of parameters.
+
 CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
     RandomForestClassifier: {
         "n_estimators": [10, 50, 100, 200, 500],
         "max_depth": [None, 10, 20, 30, 50],
         "min_samples_split": [2, 5, 10, 15, 20],
         "min_samples_leaf": [1, 2, 4, 8, 16],
-        "max_features": ["auto", "sqrt", "log2"],
+        "max_features": ["sqrt", "log2", None],
     },
     LGBMClassifier: {
         "n_estimators": [100, 200, 300, 400, 500],
@@ -39,7 +50,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "max_depth": [None, 10, 20, 30, 50],
         "min_samples_split": [2, 5, 10, 15, 20],
         "min_samples_leaf": [1, 2, 4, 8, 16],
-        "max_features": ["auto", "sqrt", "log2"],
+        "max_features": ["sqrt", "log2", None],
     },
     XGBClassifier: {
         "n_estimators": [100, 200, 300, 400, 500],
@@ -52,14 +63,14 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "max_depth": [None, 10, 20, 30, 50],
         "min_samples_split": [2, 5, 10, 15, 20],
         "min_samples_leaf": [1, 2, 4, 8, 16],
-        "max_features": ["auto", "sqrt", "log2"],
+        "max_features": ["sqrt", "log2"],
         "criterion": ["gini", "entropy", "log_loss"],
     },
     ExtraTreeClassifier: {
         "max_depth": [None, 10, 20, 30, 50],
         "min_samples_split": [2, 5, 10, 15, 20],
         "min_samples_leaf": [1, 2, 4, 8, 16],
-        "max_features": ["auto", "sqrt", "log2"],
+        "max_features": ["sqrt", "log2"],
         "criterion": ["gini", "entropy", "log_loss"],
     },
     SVC: {
@@ -70,7 +81,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "shrinking": [True, False],
     },
     NuSVC: {
-        "nu": [0.1, 0.3, 0.5, 0.7, 0.9],
+        "nu": [0.1, 0.3, 0.5, 0.7],
         "kernel": ["linear", "poly", "rbf", "sigmoid"],
         "degree": [2, 3, 4, 5],
         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
@@ -81,8 +92,8 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
     LinearSVC: {
         "C": [0.1, 1.0, 10.0, 100.0, 1000.0],
         "loss": ["hinge", "squared_hinge"],
-        "penalty": ["l1", "l2"],
-        "dual": [True, False],
+        "penalty": [ "l2"],
+        "dual": ['auto'],
         "multi_class": ["ovr", "crammer_singer"],
     },
     KNeighborsClassifier: {
@@ -125,7 +136,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
     #     "method": ["sigmoid", "isotonic"],
     # },
     LinearDiscriminantAnalysis: {
-        "solver": ["svd", "lsqr", "eigen"],
+        "solver": ["lsqr"],
         "shrinkage": [None, 0.1, 0.2, 0.3, 0.4],
         "priors": [None] + [[0.1, 0.9], [0.2, 0.8], [0.3, 0.7], [0.4, 0.6], [0.5, 0.5]],
     },
@@ -147,11 +158,11 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "n_jobs": [None, -1],
     },
     LogisticRegression: {
-        "penalty": ["l1", "l2"],
+        "penalty": ["l2"],
         "C": [0.001, 0.01, 0.1, 1.0, 10.0],
         "solver": ["newton-cg", "lbfgs", "liblinear", "sag", "saga"],
         "max_iter": [100],
-        "multi_class": ["auto", "ovr", "multinomial"],
+        "multi_class": ["auto", "ovr"],
     },
     RidgeClassifierCV: {
         "alphas": [0.1, 1.0, 10.0, 100.0, 1000.0],
@@ -166,13 +177,14 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
     },
     SGDClassifier: {
         "loss": ["hinge", "modified_huber", "squared_hinge", "perceptron"],
-        "penalty": ["l2", "l1", "elasticnet"],
+        "penalty": ["l2",  "elasticnet"],
         "alpha": [0.0001, 0.001, 0.01, 0.1, 1.0],
+        "eta0": [0.01, 0.1, 1.0, 10.0],
         "learning_rate": ["optimal", "constant", "invscaling", "adaptive"],
         "max_iter": [1000],
     },
     Perceptron: {
-        "penalty": [None, "l2", "l1", "elasticnet"],
+        "penalty": [None, "l2",  "elasticnet"],
         "alpha": [0.0001, 0.001, 0.01, 0.1, 1.0],
         "fit_intercept": [True, False],
         "max_iter": [1000],
