@@ -11,3 +11,4 @@ n_seeds_to_undersample: 2
 n_folds_inner: 5
 
 n_jobs: 8
+debug_mode: True
