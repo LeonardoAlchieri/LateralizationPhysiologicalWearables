@@ -120,9 +120,10 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "bootstrap": [True, False],
         "bootstrap_features": [True, False],
     },
-    CalibratedClassifierCV: {
-        "method": ["sigmoid", "isotonic"],
-    },
+    # REMOVED BECAUSE IN SOME INSTANCES IT FAILS TO CONVERGE
+    # CalibratedClassifierCV: {
+    #     "method": ["sigmoid", "isotonic"],
+    # },
     LinearDiscriminantAnalysis: {
         "solver": ["svd", "lsqr", "eigen"],
         "shrinkage": [None, 0.1, 0.2, 0.3, 0.4],

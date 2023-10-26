@@ -33,6 +33,8 @@ def main():
     n_folds_outer: int = configs["n_folds_outer"]
     n_folds_inner: int = configs["n_folds_inner"]
     n_jobs: int = configs["n_jobs"]
+    
+    print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
     data: dict[str, Any] = load(path_to_features_data)
 
@@ -54,6 +56,7 @@ def main():
         [labels_right, labels_left],
         [groups_right, groups_left],
     ):
+        print(f'Starting {side} side')
         (
             averaged_results_cv[side],
             all_results_cv[side],
@@ -70,7 +73,9 @@ def main():
             n_jobs=n_jobs,
         )
 
+
     for opposite_side in ["rxlx", "lxrx"]:
+        print(f'Starting {opposite_side} opposite side')
         (
             averaged_results_cv[opposite_side],
             all_results_cv[opposite_side],
@@ -83,6 +88,7 @@ def main():
             groups_left=groups_left,
             which_comparison=opposite_side,
             generator_seeds=generator_seeds,
+            n_seeds_to_test_folds=n_seeds_to_test_folds,
             n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
             n_seeds_to_undersample=n_seeds_to_undersample,
             n_jobs=n_jobs,
