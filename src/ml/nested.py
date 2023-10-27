@@ -531,7 +531,7 @@ def run_opposite_side_prediction_hyper(
         .groupby(level=0)
         .apply(
             lambda x: x.loc[:, IndexSlice["Average", :]].std()
-            / ((n_seeds_to_test_classifiers * n_seeds_to_undersample) ** 0.5)
+            / ((n_seeds_to_test_classifiers * n_seeds_to_undersample * n_seeds_to_test_folds) ** 0.5)
         )
         .droplevel(axis=1, level=0)
         .sort_values(by="Balanced Accuracy", ascending=False)
