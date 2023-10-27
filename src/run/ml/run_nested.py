@@ -33,17 +33,27 @@ def main():
     n_folds_outer: int = configs["n_folds_outer"]
     n_folds_inner: int = configs["n_folds_inner"]
     n_jobs: int = configs["n_jobs"]
+    debug_mode: bool = configs["debug_mode"]
     
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
     data: dict[str, Any] = load(path_to_features_data)
 
-    features_left = data["features_left"]
-    features_right = data["features_right"]
-    labels_left = data["labels_left"]
-    labels_right = data["labels_right"]
-    groups_left = data["groups_left"]
-    groups_right = data["groups_right"]
+    if debug_mode:
+        features_left = data["features_left"][:200]
+        features_right = data["features_right"][:200]
+        labels_left = data["labels_left"][:200]
+        labels_right = data["labels_right"][:200]
+        groups_left = data["groups_left"][:200]
+        groups_right = data["groups_right"][:200]
+    else:
+        features_left = data["features_left"]
+        features_right = data["features_right"]
+        labels_left = data["labels_left"]
+        labels_right = data["labels_right"]
+        groups_left = data["groups_left"]
+        groups_right = data["groups_right"]
+    
 
     # if artifacts:
     #     artefacts_left = data["artefacts_left"]
