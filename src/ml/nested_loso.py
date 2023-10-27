@@ -340,7 +340,7 @@ def run_same_side_classifications(
         "Random seed iterations", total=len(list(possible_combinations))
     ):
         outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1),
+            n_jobs=8, backend="loky"
         )(
             delayed(compute_loso_same_side)(
                 data=data,
