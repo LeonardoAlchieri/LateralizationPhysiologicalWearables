@@ -72,7 +72,7 @@ def perform_grid_search_estimation(
     y_train: ndarray,
     x_test: ndarray,
     y_test: ndarray,
-    n_jobs: int = 1,
+    max_resources: int | str = 'auto',
 ):
     if "random_state" in classifier().get_params().keys():
         model: ClassifierMixin = classifier(random_state=random_state_classifier)
@@ -88,6 +88,7 @@ def perform_grid_search_estimation(
             scoring="accuracy",
             cv=folds_inner,
             refit=True,
+            max_resources=max_resources,
             n_jobs=1,
             random_state=random_state_classifier,
             # error_score="raise",
@@ -108,6 +109,7 @@ def fit_with_hyperparameters(
     random_state_classifier: int,
     random_state_fold: int,
     n_inner_folds: int,
+    max_resources: int | str = 'auto',
 ) -> DataFrame:
     folds_inner: Generator = StratifiedKFold(
         n_splits=n_inner_folds, random_state=random_state_fold, shuffle=True
@@ -127,6 +129,7 @@ def fit_with_hyperparameters(
             y_train=y_train,
             x_test=x_test,
             y_test=y_test,
+            max_resources=max_resources,
         )
         for classifier, search_space in CLASSIFIERS_HYPERPARAMETER_LIST.items()
     ]
@@ -197,6 +200,7 @@ def run_hyper_fold(
         random_state_classifier=random_state_classifier,
         random_state_fold=random_state_fold,
         n_inner_folds=n_inner_folds,
+        max_resources=kwargs.get("max_resources", 'auto'),
     )
 
     return models
@@ -240,6 +244,7 @@ def compute_outer_folds_same_side(
                 n_inner_folds=n_inner_folds,
                 classifiers=classifiers,
                 resampling_method=resampling_method,
+                max_resources=kwargs.get("max_resources", 'auto'),
             )
             for train_index, test_index in folds
         ]
@@ -356,6 +361,7 @@ def run_nested_cross_validation_prediction(
                 random_state_undersampling=random_state_undersampling,
                 classifiers=kwargs.get("classifiers", "all"),
                 resampling_method=kwargs.get("resampling_method", None),
+                max_resources=kwargs.get("max_resources", 'auto'),
             )
             for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
         )
@@ -405,6 +411,7 @@ def compute_outer_folds_opposite_side(
     random_state_fold: int,
     n_inner_folds: int,
     which_comparison: str,
+    **kwargs,
 ) -> tuple[list[DataFrame], list[list[DataFrame]]]:
     x_resampled_rx, y_resampled_rx, _ = local_resampling(
         features_right,
@@ -424,6 +431,7 @@ def compute_outer_folds_opposite_side(
             random_state_classifier=random_state_classifier,
             random_state_fold=random_state_fold,
             n_inner_folds=n_inner_folds,
+            max_resources=kwargs.get("max_resources", 'auto'),
         )
     elif which_comparison == "lxrx":
         models = fit_with_hyperparameters(
@@ -434,6 +442,7 @@ def compute_outer_folds_opposite_side(
             random_state_classifier=random_state_classifier,
             random_state_fold=random_state_fold,
             n_inner_folds=n_inner_folds,
+            max_resources=kwargs.get("max_resources", 'auto'),
         )
     else:
         raise ValueError(
@@ -502,6 +511,7 @@ def run_opposite_side_prediction_hyper(
                 random_state_fold=random_state_fold,
                 n_inner_folds=n_inner_folds,
                 which_comparison=which_comparison,
+                max_resources=kwargs.get("max_resources", 'auto'),
             )
             for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
         )
