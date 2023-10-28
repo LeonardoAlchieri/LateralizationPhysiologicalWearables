@@ -33,6 +33,7 @@ def main():
     n_folds_outer: int = configs["n_folds_outer"]
     n_folds_inner: int = configs["n_folds_inner"]
     n_jobs: int = configs["n_jobs"]
+    timeout: int = configs["timeout"]
     max_resources: int = configs["max_resources"]
     debug_mode: bool = configs["debug_mode"]
     
@@ -82,6 +83,7 @@ def main():
             n_inner_folds=n_folds_inner,
             n_outer_folds=n_folds_outer,
             n_jobs=n_jobs,
+            timeout=timeout,
             max_resources=max_resources,
         )
 
@@ -104,6 +106,7 @@ def main():
             n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
             n_seeds_to_undersample=n_seeds_to_undersample,
             n_jobs=n_jobs,
+            timeout=timeout,
             max_resources=max_resources,
         )
 

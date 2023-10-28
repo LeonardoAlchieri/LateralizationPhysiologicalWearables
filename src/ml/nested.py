@@ -2,18 +2,21 @@ from itertools import product
 
 # setup logger
 from logging import getLogger
+from signal import SIGALRM
+from signal import alarm as timeout_alarm
+from signal import signal
 from typing import Any, Callable, Generator, Iterable
 
 import pandas as pd
 from joblib import Parallel, delayed
+from joblib_progress import joblib_progress
 from lazypredict.Supervised import (
-    LazyClassifier,
     categorical_transformer_high,
     categorical_transformer_low,
     get_card_split,
     numeric_transformer,
 )
-from numpy import ndarray
+from numpy import nan, ndarray
 from numpy import number as npnumber
 from numpy.random import randint
 from numpy.random import seed as set_numpy_seed
@@ -23,10 +26,8 @@ from sklearn.compose import ColumnTransformer
 from sklearn.experimental import enable_halving_search_cv
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.model_selection import HalvingRandomSearchCV, StratifiedKFold
-from sklearn.pipeline import make_pipeline, Pipeline
+from sklearn.pipeline import Pipeline, make_pipeline
 from tqdm.auto import tqdm
-from joblib_progress import joblib_progress
-
 
 from src.ml import local_resampling, resampling
 from src.ml.classifier_list import CLASSIFIERS_HYPERPARAMETER_LIST
@@ -38,6 +39,11 @@ import os
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_DYNAMIC"] = "FALSE"
+
+
+def timeout_handler(signum, frame):
+    print("Classifier got stuck. Raising exception.")
+    raise TimeoutError("Stuck classifier")
 
 
 def preprocessing(
@@ -72,7 +78,7 @@ def perform_grid_search_estimation(
     y_train: ndarray,
     x_test: ndarray,
     y_test: ndarray,
-    max_resources: int | str = 'auto',
+    max_resources: int | str = "auto",
 ):
     if "random_state" in classifier().get_params().keys():
         model: ClassifierMixin = classifier(random_state=random_state_classifier)
@@ -101,25 +107,42 @@ def perform_grid_search_estimation(
     # models[classifier.__name__] = acc
 
 
-def fit_with_hyperparameters(
+def single_classifier_training(
+    classifier: ClassifierMixin,
+    random_state_classifier: int,
+    preprocessor: Pipeline,
+    search_space: dict[str, Any],
+    folds_inner: list,
     x_train: ndarray,
     y_train: ndarray,
     x_test: ndarray,
     y_test: ndarray,
-    random_state_classifier: int,
-    random_state_fold: int,
-    n_inner_folds: int,
-    max_resources: int | str = 'auto',
-) -> DataFrame:
-    folds_inner: Generator = StratifiedKFold(
-        n_splits=n_inner_folds, random_state=random_state_fold, shuffle=True
-    ).split(x_train, y_train)
-    folds_inner = list(folds_inner)
+    max_resources: int | str = "auto",
+    timeout: int | None = None,
+):
+    if timeout is not None:
+        signal(SIGALRM, timeout_handler)
+        timeout_alarm(timeout)
 
-    preprocessor = preprocessing(x_train)
-
-    models: list[tuple[str, float]] = [
-        perform_grid_search_estimation(
+        try:
+            result = perform_grid_search_estimation(
+                classifier=classifier,
+                random_state_classifier=random_state_classifier,
+                preprocessor=preprocessor,
+                search_space=search_space,
+                folds_inner=folds_inner,
+                x_train=x_train,
+                y_train=y_train,
+                x_test=x_test,
+                y_test=y_test,
+                max_resources=max_resources,
+            )
+        except TimeoutError as exc:
+            print(exc)
+            print(f"Classifier stuck: {classifier.__name__}")
+            result = classifier.__name__, nan
+    else:
+        result = perform_grid_search_estimation(
             classifier=classifier,
             random_state_classifier=random_state_classifier,
             preprocessor=preprocessor,
@@ -130,6 +153,41 @@ def fit_with_hyperparameters(
             x_test=x_test,
             y_test=y_test,
             max_resources=max_resources,
+        )
+    return result
+
+
+def fit_with_hyperparameters(
+    x_train: ndarray,
+    y_train: ndarray,
+    x_test: ndarray,
+    y_test: ndarray,
+    random_state_classifier: int,
+    random_state_fold: int,
+    n_inner_folds: int,
+    max_resources: int | str = "auto",
+    timeout: int | None = None,
+) -> DataFrame:
+    folds_inner: Generator = StratifiedKFold(
+        n_splits=n_inner_folds, random_state=random_state_fold, shuffle=True
+    ).split(x_train, y_train)
+    folds_inner = list(folds_inner)
+
+    preprocessor = preprocessing(x_train)
+
+    models: list[tuple[str, float]] = [
+        single_classifier_training(
+            classifier=classifier,
+            random_state_classifier=random_state_classifier,
+            preprocessor=preprocessor,
+            search_space=search_space,
+            folds_inner=folds_inner,
+            x_train=x_train,
+            y_train=y_train,
+            x_test=x_test,
+            y_test=y_test,
+            max_resources=max_resources,
+            timeout=timeout,
         )
         for classifier, search_space in CLASSIFIERS_HYPERPARAMETER_LIST.items()
     ]
@@ -200,7 +258,8 @@ def run_hyper_fold(
         random_state_classifier=random_state_classifier,
         random_state_fold=random_state_fold,
         n_inner_folds=n_inner_folds,
-        max_resources=kwargs.get("max_resources", 'auto'),
+        max_resources=kwargs.get("max_resources", "auto"),
+        timeout=kwargs.get("timeout", None),
     )
 
     return models
@@ -244,7 +303,8 @@ def compute_outer_folds_same_side(
                 n_inner_folds=n_inner_folds,
                 classifiers=classifiers,
                 resampling_method=resampling_method,
-                max_resources=kwargs.get("max_resources", 'auto'),
+                max_resources=kwargs.get("max_resources", "auto"),
+                timeout=kwargs.get("timeout", None),
             )
             for train_index, test_index in folds
         ]
@@ -255,15 +315,24 @@ def compute_outer_folds_same_side(
         pd.concat(all_models)
         .groupby(level=0)
         .mean()
+        # .sort_index(ascending=False)
         .sort_values(by="Balanced Accuracy", ascending=False)
     )
-    standard_deviations = (
+    # standard_deviations = (
+    #     pd.concat(all_models)
+    #     .groupby(level=0)
+    #     .std()
+    #     .sort_values(by="Balanced Accuracy", ascending=False)
+    # )
+    standard_errors = (
         pd.concat(all_models)
         .groupby(level=0)
-        .std()
+        .sem()
+        # .sort_index(ascending=False)
         .sort_values(by="Balanced Accuracy", ascending=False)
     )
-    standard_errors = standard_deviations / (n_outer_folds**0.5)
+    # standard_errors = standard_deviations / (n_outer_folds**0.5)
+    
     return all_models, pd.concat(
         [averages, standard_errors],
         axis=1,
@@ -350,7 +419,7 @@ def run_nested_cross_validation_prediction(
         "Random seed iterations", total=len(list(possible_combinations))
     ):
         outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1),
+            n_jobs=kwargs.get("n_jobs", 1), backend="multiprocessing", pre_dispatch = '1*n_jobs'
         )(
             delayed(compute_outer_folds_same_side)(
                 data=data,
@@ -361,7 +430,8 @@ def run_nested_cross_validation_prediction(
                 random_state_undersampling=random_state_undersampling,
                 classifiers=kwargs.get("classifiers", "all"),
                 resampling_method=kwargs.get("resampling_method", None),
-                max_resources=kwargs.get("max_resources", 'auto'),
+                max_resources=kwargs.get("max_resources", "auto"),
+                timeout=kwargs.get("timeout", None),
             )
             for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
         )
@@ -431,7 +501,8 @@ def compute_outer_folds_opposite_side(
             random_state_classifier=random_state_classifier,
             random_state_fold=random_state_fold,
             n_inner_folds=n_inner_folds,
-            max_resources=kwargs.get("max_resources", 'auto'),
+            max_resources=kwargs.get("max_resources", "auto"),
+            timeout=kwargs.get("timeout", None),
         )
     elif which_comparison == "lxrx":
         models = fit_with_hyperparameters(
@@ -442,7 +513,8 @@ def compute_outer_folds_opposite_side(
             random_state_classifier=random_state_classifier,
             random_state_fold=random_state_fold,
             n_inner_folds=n_inner_folds,
-            max_resources=kwargs.get("max_resources", 'auto'),
+            max_resources=kwargs.get("max_resources", "auto"),
+            timeout=kwargs.get("timeout", None),
         )
     else:
         raise ValueError(
@@ -497,7 +569,7 @@ def run_opposite_side_prediction_hyper(
         "Random seed iterations", total=len(list(possible_combinations))
     ):
         outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1),
+            n_jobs=kwargs.get("n_jobs", 1), backend="multiprocessing", pre_dispatch = '1*n_jobs'
         )(
             delayed(compute_outer_folds_opposite_side)(
                 features_right=features_right,
@@ -511,7 +583,8 @@ def run_opposite_side_prediction_hyper(
                 random_state_fold=random_state_fold,
                 n_inner_folds=n_inner_folds,
                 which_comparison=which_comparison,
-                max_resources=kwargs.get("max_resources", 'auto'),
+                max_resources=kwargs.get("max_resources", "auto"),
+                timeout=kwargs.get("timeout", None),
             )
             for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
         )
@@ -530,8 +603,16 @@ def run_opposite_side_prediction_hyper(
         pd.concat(results)
         .groupby(level=0)
         .apply(
-            lambda x: x.loc[:, IndexSlice["Average", :]].std()
-            / ((n_seeds_to_test_classifiers * n_seeds_to_undersample * n_seeds_to_test_folds) ** 0.5)
+            lambda x: x.loc[:, IndexSlice["Average", :]].sem()
+            # lambda x: x.loc[:, IndexSlice["Average", :]].std()
+            # / (
+            #     (
+            #         n_seeds_to_test_classifiers
+            #         * n_seeds_to_undersample
+            #         * n_seeds_to_test_folds
+            #     )
+            #     ** 0.5
+            # )
         )
         .droplevel(axis=1, level=0)
         .sort_values(by="Balanced Accuracy", ascending=False)
