@@ -30,6 +30,9 @@ from tqdm.auto import tqdm
 from src.ml import local_resampling, resampling
 from src.ml.classifier_list import CLASSIFIERS_HYPERPARAMETER_LIST
 
+from functools import partial
+import multiprocessing
+
 logger = getLogger("nested")
 
 import os
@@ -77,7 +80,6 @@ def perform_grid_search_estimation(
     x_test: ndarray,
     y_test: ndarray,
     max_resources: int | str = "auto",
-    n_jobs: int = 1,
 ):
     if "random_state" in classifier().get_params().keys():
         model: ClassifierMixin = classifier(random_state=random_state_classifier)
@@ -94,7 +96,7 @@ def perform_grid_search_estimation(
             cv=folds_inner,
             refit=True,
             max_resources=max_resources,
-            n_jobs=n_jobs,
+            n_jobs=1,
             random_state=random_state_classifier,
             # error_score="raise",
         ),
@@ -118,7 +120,6 @@ def single_classifier_training(
     y_test: ndarray,
     max_resources: int | str = "auto",
     timeout: int | None = None,
-    n_jobs: int = 1,
 ):
     if timeout is not None:
         signal(SIGALRM, timeout_handler)
@@ -136,7 +137,6 @@ def single_classifier_training(
                 x_test=x_test,
                 y_test=y_test,
                 max_resources=max_resources,
-                n_jobs=n_jobs,
             )
         except TimeoutError as exc:
             print(exc)
@@ -154,7 +154,6 @@ def single_classifier_training(
             x_test=x_test,
             y_test=y_test,
             max_resources=max_resources,
-            n_jobs=n_jobs,
         )
     return result
 
@@ -169,7 +168,6 @@ def fit_with_hyperparameters(
     n_inner_folds: int,
     max_resources: int | str = "auto",
     timeout: int | None = None,
-    n_jobs: int = 1,
 ) -> DataFrame:
     folds_inner: Generator = StratifiedKFold(
         n_splits=n_inner_folds, random_state=random_state_fold, shuffle=True
@@ -191,7 +189,6 @@ def fit_with_hyperparameters(
             y_test=y_test,
             max_resources=max_resources,
             timeout=timeout,
-            n_jobs=n_jobs,
         )
         for classifier, search_space in CLASSIFIERS_HYPERPARAMETER_LIST.items()
     ]
@@ -264,7 +261,6 @@ def run_hyper_fold(
         n_inner_folds=n_inner_folds,
         max_resources=kwargs.get("max_resources", "auto"),
         timeout=kwargs.get("timeout", None),
-        n_jobs=kwargs.get("n_jobs", 1),
     )
 
     return models
@@ -279,7 +275,8 @@ def compute_outer_folds_same_side(
     random_state_undersampling: int,
     classifiers: list[ClassifierMixin],
     resampling_method: Callable | None,
-    **kwargs,
+    max_resources: str | int = 'auto', 
+    timeout: int | None = None, 
 ):
     x_full: ndarray = data.drop(columns=["label"], inplace=False).values
     y_full: ndarray = data["label"].values
@@ -293,7 +290,7 @@ def compute_outer_folds_same_side(
 
     folds = list(folds)
 
-    custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
+    custom_method = None
     if custom_method is None:
         all_models: list[DataFrame] = [
             run_hyper_fold(
@@ -308,9 +305,8 @@ def compute_outer_folds_same_side(
                 n_inner_folds=n_inner_folds,
                 classifiers=classifiers,
                 resampling_method=resampling_method,
-                max_resources=kwargs.get("max_resources", "auto"),
-                timeout=kwargs.get("timeout", None),
-                n_jobs=kwargs.get("n_jobs", 1),
+                max_resources=max_resources,
+                timeout=timeout,
             )
             for train_index, test_index in folds
         ]
@@ -421,27 +417,26 @@ def run_nested_cross_validation_prediction(
         )
     )
 
-    outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = [
-        compute_outer_folds_same_side(
-            data=data,
-            n_outer_folds=n_outer_folds,
-            n_inner_folds=n_inner_folds,
-            random_state_fold=random_state_fold,
-            random_state_classifier=random_state_classifier,
-            random_state_undersampling=random_state_undersampling,
-            classifiers=kwargs.get("classifiers", "all"),
-            resampling_method=kwargs.get("resampling_method", None),
-            max_resources=kwargs.get("max_resources", "auto"),
-            timeout=kwargs.get("timeout", None),
-            n_jobs=kwargs.get("n_jobs", 1),
+    possible_combinations_args = [
+        (
+            data,
+            n_outer_folds,
+            n_inner_folds,
+            random_state_fold,
+            random_state_classifier,
+            random_state_undersampling,
+            kwargs.get("classifiers", "all"),
+            kwargs.get("resampling_method", None),
+            kwargs.get("max_resources", "auto"),
+            kwargs.get("timeout", None),
         )
-        for random_state_fold, random_state_undersampling, random_state_classifier in tqdm(
-            possible_combinations,
-            desc="Combinations progress",
-            total=len(possible_combinations),
-            color="blue",
-        )
+        for random_state_fold, random_state_classifier, random_state_undersampling in possible_combinations
     ]
+
+    with multiprocessing.Pool(processes=kwargs.get("n_jobs", 1)) as pool:
+        outer_folds_output = L = pool.starmap(
+            compute_outer_folds_same_side, possible_combinations_args
+        )
 
     results = [outer_fold[1] for outer_fold in outer_folds_output]
     all_results = [outer_fold[0] for outer_fold in outer_folds_output]
@@ -510,7 +505,6 @@ def compute_outer_folds_opposite_side(
             n_inner_folds=n_inner_folds,
             max_resources=kwargs.get("max_resources", "auto"),
             timeout=kwargs.get("timeout", None),
-            n_jobs=kwargs.get("n_jobs", 1)
         )
     elif which_comparison == "lxrx":
         models = fit_with_hyperparameters(
@@ -523,7 +517,6 @@ def compute_outer_folds_opposite_side(
             n_inner_folds=n_inner_folds,
             max_resources=kwargs.get("max_resources", "auto"),
             timeout=kwargs.get("timeout", None),
-            n_jobs=kwargs.get("n_jobs", 1)
         )
     else:
         raise ValueError(
@@ -574,9 +567,13 @@ def run_opposite_side_prediction_hyper(
         )
     )
 
-    
-    outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = [
-            compute_outer_folds_opposite_side(
+    with joblib_progress(
+        "Random seed iterations", total=len(list(possible_combinations))
+    ):
+        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
+            n_jobs=kwargs.get("n_jobs", 1),
+        )(
+            delayed(compute_outer_folds_opposite_side)(
                 features_right=features_right,
                 labels_right=labels_right,
                 groups_right=groups_right,
@@ -590,12 +587,11 @@ def run_opposite_side_prediction_hyper(
                 which_comparison=which_comparison,
                 max_resources=kwargs.get("max_resources", "auto"),
                 timeout=kwargs.get("timeout", None),
-                n_jobs=kwargs.get("n_jobs", 1),
             )
-            for random_state_fold, random_state_undersampling, random_state_classifier in tqdm(possible_combinations, desc="Combinations progress", total=len(possible_combinations), color="blue")
-        ]
-    results = [outer_fold[1] for outer_fold in outer_folds_output]
-    all_results = [outer_fold[0] for outer_fold in outer_folds_output]
+            for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
+        )
+        results = [outer_fold[1] for outer_fold in outer_folds_output]
+        all_results = [outer_fold[0] for outer_fold in outer_folds_output]
 
     averages_seeds = (
         pd.concat(results)
