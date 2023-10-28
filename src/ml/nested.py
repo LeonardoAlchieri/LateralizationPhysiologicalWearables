@@ -419,7 +419,11 @@ def run_nested_cross_validation_prediction(
         "Random seed iterations", total=len(list(possible_combinations))
     ):
         outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
+<<<<<<< Updated upstream
             n_jobs=kwargs.get("n_jobs", 1), backend="multiprocessing", pre_dispatch = '1*n_jobs'
+=======
+            n_jobs=kwargs.get("n_jobs", 1), backend="multiprocessing",
+>>>>>>> Stashed changes
         )(
             delayed(compute_outer_folds_same_side)(
                 data=data,

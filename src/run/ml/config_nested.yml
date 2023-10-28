@@ -1,6 +1,6 @@
-path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_freqfet-3.npz"
-path_to_save_data_avgs: "./data.nosync/usilaughs/results/nested_avg_Testmac.h5"
-path_to_save_data_all: "./data.nosync/usilaughs/results/nested_all_Testmac.h5"
+path_to_features_data: "./data.nosync/mwc2022/features/EDA_features_noart_freqfet-3.npz"
+path_to_save_data_avgs: "./data.nosync/mwc2022/results/nested_avg_SMALL-Mac.h5"
+path_to_save_data_all: "./data.nosync/mwc2022/results/nested_all_SMALL-Mac.h5"
 generator_seeds:
   - 42 
   - 69
