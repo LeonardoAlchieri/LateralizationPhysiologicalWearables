@@ -411,10 +411,10 @@ def run_nested_cross_validation_prediction(
     # for the cross validation, two "main" seeds are required, from which then
     # generate all of the others. This also allows reproducibility of the code.
     set_numpy_seed(generator_seeds[1])
-    random_states_folds = randint(0, int(2**32 - 1), n_seeds_to_test_folds)
+    random_states_folds = randint(0, 10000, n_seeds_to_test_folds)
 
     set_numpy_seed(generator_seeds[2])
-    random_states_undersampling = randint(0, int(2**32 - 1), n_seeds_to_undersample)
+    random_states_undersampling = randint(0, 10000, n_seeds_to_undersample)
 
     x = x.reshape((x.shape[0], -1))
     data = DataFrame(x, index=groups)
@@ -569,10 +569,10 @@ def run_opposite_side_prediction_hyper(
     # for the cross validation, two "main" seeds are required, from which then
     # generate all of the others. This also allows reproducibility of the code.
     set_numpy_seed(generator_seeds[1])
-    random_states_undersampling = randint(0, int(2**32 - 1), n_seeds_to_undersample)
+    random_states_undersampling = randint(0, 10000, n_seeds_to_undersample)
 
     set_numpy_seed(generator_seeds[2])
-    random_states_folds = randint(0, int(2**32 - 1), n_seeds_to_test_folds)
+    random_states_folds = randint(0, 10000, n_seeds_to_test_folds)
 
     # results = []
     # all_results: list[list[DataFrame]] = []
