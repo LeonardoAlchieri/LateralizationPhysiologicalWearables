@@ -1,3 +1,4 @@
+from typing import Any, Literal
 from collections import defaultdict
 from logging import DEBUG, INFO, basicConfig, getLogger
 from sys import path
@@ -35,6 +36,7 @@ def main():
     n_jobs: int = configs["n_jobs"]
     timeout: int = configs["timeout"]
     max_resources: int = configs["max_resources"]
+    n_candidates: int | Literal['exhaust'] = configs["n_candidates"]
     debug_mode: bool = configs["debug_mode"]
     
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
@@ -85,6 +87,7 @@ def main():
             n_jobs=n_jobs,
             timeout=timeout,
             max_resources=max_resources,
+            n_candidate=n_candidates,
         )
 
 
@@ -108,6 +111,7 @@ def main():
             n_jobs=n_jobs,
             timeout=timeout,
             max_resources=max_resources,
+            n_candidates=n_candidates,
         )
 
     # Create an HDF5 file
