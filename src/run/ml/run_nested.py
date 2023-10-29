@@ -58,7 +58,7 @@ def main():
         groups_left = data["groups_left"]
         groups_right = data["groups_right"]
     
-
+    print("\n")
     # if artifacts:
     #     artefacts_left = data["artefacts_left"]
     #     artefacts_right = data["artefacts_right"]
@@ -91,6 +91,7 @@ def main():
         )
 
 
+    print("\n")
     for opposite_side in ["rxlx", "lxrx"]:
         print(f'Starting {opposite_side} opposite side')
         (

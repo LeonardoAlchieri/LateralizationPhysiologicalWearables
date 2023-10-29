@@ -196,12 +196,7 @@ def fit_with_hyperparameters(
             timeout=timeout,
             n_candidates=n_candidates,
         )
-        for classifier, search_space in tqdm(
-            CLASSIFIERS_HYPERPARAMETER_LIST.items(),
-            desc="Classifiers",
-            colour="green",
-            position=1,
-        )
+        for classifier, search_space in CLASSIFIERS_HYPERPARAMETER_LIST.items()
     ]
     models: dict[str, float] = {k: v for k, v in models}
 
@@ -279,6 +274,7 @@ def run_hyper_fold(
 
 
 def compute_outer_folds_same_side(
+    id: int,
     data: DataFrame,
     n_outer_folds: int,
     n_inner_folds: int,
@@ -320,7 +316,13 @@ def compute_outer_folds_same_side(
                 timeout=kwargs.get("timeout", None),
                 n_candidates=kwargs.get("n_candidates", "exhaust"),
             )
-            for train_index, test_index in folds
+            for train_index, test_index in tqdm(
+                folds,
+                desc=f"Outer folds progress id {id}, seeds: {random_state_classifier, random_state_undersampling, random_state_fold}",
+                colour="blue",
+                position=id + 2,
+                leave=False,
+            )
         ]
     else:
         raise NotImplementedError("Custom nested fold run method not implemented yet.")
@@ -404,7 +406,7 @@ def run_nested_cross_validation_prediction(
     # random seeds to be fed to the algorithm
     set_numpy_seed(generator_seeds[0])
     random_states_classifiers = randint(
-        0, int(2**32 - 1), n_seeds_to_test_classifiers
+        0, 10000, n_seeds_to_test_classifiers
     )
 
     # NOTE: to avoid dependencies between the seeds for the classifiers and those
@@ -436,6 +438,7 @@ def run_nested_cross_validation_prediction(
             n_jobs=kwargs.get("n_jobs", 1), backend="loky"
         )(
             delayed(compute_outer_folds_same_side)(
+                id=i,
                 data=data,
                 n_outer_folds=n_outer_folds,
                 n_inner_folds=n_inner_folds,
@@ -448,7 +451,11 @@ def run_nested_cross_validation_prediction(
                 timeout=kwargs.get("timeout", None),
                 n_candidates=kwargs.get("n_candidates", "exhaust"),
             )
-            for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
+            for i, (
+                random_state_fold,
+                random_state_undersampling,
+                random_state_classifier,
+            ) in enumerate(possible_combinations)
         )
 
     results = [outer_fold[1] for outer_fold in outer_folds_output]
@@ -562,7 +569,7 @@ def run_opposite_side_prediction_hyper(
 ):
     set_numpy_seed(generator_seeds[0])
     random_states_classifiers = randint(
-        0, int(2**32 - 1), n_seeds_to_test_classifiers
+        0, 10000, n_seeds_to_test_classifiers
     )
 
     # NOTE: to avoid dependencies between the seeds for the classifiers and those
