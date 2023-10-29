@@ -4,9 +4,12 @@ from logging import DEBUG, INFO, basicConfig, getLogger
 from sys import path
 from typing import Any
 from json import dump
+from os.path import join as join_paths
 
 from pandas import HDFStore
 from numpy import load
+
+import argparse
 
 path.append(".")
 from src.utils.io import load_config
@@ -15,6 +18,10 @@ from src.ml.nested import run_nested_cross_validation_prediction, run_opposite_s
 basicConfig(filename="logs/run_nested.log", level=DEBUG)
 
 logger = getLogger("main")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("identifier", help="get the unique code for the random seed folds", type=int)
+args = parser.parse_args()
 
 
 def main():
@@ -33,11 +40,13 @@ def main():
     n_seeds_to_undersample: int = configs["n_seeds_to_undersample"]
     n_folds_outer: int = configs["n_folds_outer"]
     n_folds_inner: int = configs["n_folds_inner"]
-    n_jobs: int = configs["n_jobs"]
+    # n_jobs: int = configs["n_jobs"]
     timeout: int = configs["timeout"]
     max_resources: int = configs["max_resources"]
     n_candidates: int | Literal['exhaust'] = configs["n_candidates"]
     debug_mode: bool = configs["debug_mode"]
+    
+    identifier: int = args.identifier
     
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
@@ -84,10 +93,11 @@ def main():
             n_seeds_to_undersample=n_seeds_to_undersample,
             n_inner_folds=n_folds_inner,
             n_outer_folds=n_folds_outer,
-            n_jobs=n_jobs,
+            # n_jobs=n_jobs,
             timeout=timeout,
             max_resources=max_resources,
-            n_candidate=n_candidates,
+            n_candidates=n_candidates,
+            identifier=identifier,
         )
 
 
@@ -108,12 +118,15 @@ def main():
             n_seeds_to_test_folds=n_seeds_to_test_folds,
             n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
             n_seeds_to_undersample=n_seeds_to_undersample,
-            n_jobs=n_jobs,
+            # n_jobs=n_jobs,
             timeout=timeout,
             max_resources=max_resources,
             n_candidates=n_candidates,
+            identifier=identifier,
         )
 
+    path_to_save_data_avgs = join_paths(path_to_save_data_avgs, f"{identifier}.h5")
+    path_to_save_data_all = join_paths(path_to_save_data_all, f"{identifier}.h5")
     # Create an HDF5 file
     with HDFStore(path_to_save_data_avgs) as store:
         # Save each DataFrame in the dictionary to the HDF5 file

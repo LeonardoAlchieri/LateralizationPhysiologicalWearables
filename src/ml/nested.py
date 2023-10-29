@@ -199,8 +199,9 @@ def fit_with_hyperparameters(
         for classifier, search_space in tqdm(
             CLASSIFIERS_HYPERPARAMETER_LIST.items(),
             desc="Classifiers",
-            colour="green",
+            colour="red",
             position=1,
+            leave=True,
         )
     ]
     models: dict[str, float] = {k: v for k, v in models}
@@ -320,7 +321,12 @@ def compute_outer_folds_same_side(
                 timeout=kwargs.get("timeout", None),
                 n_candidates=kwargs.get("n_candidates", "exhaust"),
             )
-            for train_index, test_index in folds
+            for train_index, test_index in tqdm(folds,
+                                                desc="Outer folds",
+                                                colour="green",
+                                                position=0,
+                                                leave=True,
+                                                )
         ]
     else:
         raise NotImplementedError("Custom nested fold run method not implemented yet.")
@@ -362,6 +368,7 @@ def run_nested_cross_validation_prediction(
     n_seeds_to_test_classifiers: int = 10,
     n_seeds_to_test_folds: int = 10,
     n_seeds_to_undersample: int = 10,
+    identifier: int = 0,
     n_inner_folds: int = 3,
     n_outer_folds: int = 5,
     **kwargs,
@@ -429,27 +436,27 @@ def run_nested_cross_validation_prediction(
         )
     )
 
-    with joblib_progress(
-        "Random seed iterations", total=len(list(possible_combinations))
-    ):
-        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1), backend="loky"
-        )(
-            delayed(compute_outer_folds_same_side)(
-                data=data,
-                n_outer_folds=n_outer_folds,
-                n_inner_folds=n_inner_folds,
-                random_state_fold=random_state_fold,
-                random_state_classifier=random_state_classifier,
-                random_state_undersampling=random_state_undersampling,
-                classifiers=kwargs.get("classifiers", "all"),
-                resampling_method=kwargs.get("resampling_method", None),
-                max_resources=kwargs.get("max_resources", "auto"),
-                timeout=kwargs.get("timeout", None),
-                n_candidates=kwargs.get("n_candidates", "exhaust"),
-            )
-            for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
+    (
+        random_state_fold,
+        random_state_undersampling,
+        random_state_classifier,
+    ) = possible_combinations[identifier]
+
+    outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = [
+        compute_outer_folds_same_side(
+            data=data,
+            n_outer_folds=n_outer_folds,
+            n_inner_folds=n_inner_folds,
+            random_state_fold=random_state_fold,
+            random_state_classifier=random_state_classifier,
+            random_state_undersampling=random_state_undersampling,
+            classifiers=kwargs.get("classifiers", "all"),
+            resampling_method=kwargs.get("resampling_method", None),
+            max_resources=kwargs.get("max_resources", "auto"),
+            timeout=kwargs.get("timeout", None),
+            n_candidates=kwargs.get("n_candidates", "exhaust"),
         )
+    ]
 
     results = [outer_fold[1] for outer_fold in outer_folds_output]
     all_results = [outer_fold[0] for outer_fold in outer_folds_output]
@@ -558,6 +565,7 @@ def run_opposite_side_prediction_hyper(
     n_seeds_to_test_classifiers: int = 10,
     n_seeds_to_undersample: int = 10,
     n_inner_folds: int = 3,
+    identifier: int = 0,
     **kwargs,
 ):
     set_numpy_seed(generator_seeds[0])
@@ -582,32 +590,31 @@ def run_opposite_side_prediction_hyper(
         )
     )
 
-    with joblib_progress(
-        "Random seed iterations", total=len(list(possible_combinations))
-    ):
-        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1), backend="loky"
-        )(
-            delayed(compute_outer_folds_opposite_side)(
-                features_right=features_right,
-                labels_right=labels_right,
-                groups_right=groups_right,
-                features_left=features_left,
-                labels_left=labels_left,
-                groups_left=groups_left,
-                random_state_undersampling=random_state_undersampling,
-                random_state_classifier=random_state_classifier,
-                random_state_fold=random_state_fold,
-                n_inner_folds=n_inner_folds,
-                which_comparison=which_comparison,
-                max_resources=kwargs.get("max_resources", "auto"),
-                timeout=kwargs.get("timeout", None),
-                n_candidates=kwargs.get("n_candidates", "exhaust"),
-            )
-            for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
+    (
+        random_state_fold,
+        random_state_undersampling,
+        random_state_classifier,
+    ) = possible_combinations[identifier]
+    outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = [
+        compute_outer_folds_opposite_side(
+            features_right=features_right,
+            labels_right=labels_right,
+            groups_right=groups_right,
+            features_left=features_left,
+            labels_left=labels_left,
+            groups_left=groups_left,
+            random_state_undersampling=random_state_undersampling,
+            random_state_classifier=random_state_classifier,
+            random_state_fold=random_state_fold,
+            n_inner_folds=n_inner_folds,
+            which_comparison=which_comparison,
+            max_resources=kwargs.get("max_resources", "auto"),
+            timeout=kwargs.get("timeout", None),
+            n_candidates=kwargs.get("n_candidates", "exhaust"),
         )
-        results = [outer_fold[1] for outer_fold in outer_folds_output]
-        all_results = [outer_fold[0] for outer_fold in outer_folds_output]
+    ]
+    results = [outer_fold[1] for outer_fold in outer_folds_output]
+    all_results = [outer_fold[0] for outer_fold in outer_folds_output]
 
     averages_seeds = (
         pd.concat(results)
