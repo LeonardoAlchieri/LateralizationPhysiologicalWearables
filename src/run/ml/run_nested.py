@@ -13,14 +13,22 @@ import argparse
 
 path.append(".")
 from src.utils.io import load_config
-from src.ml.nested import run_nested_cross_validation_prediction, run_opposite_side_prediction_hyper
+from src.ml.nested import (
+    run_nested_cross_validation_prediction,
+    run_opposite_side_prediction_hyper,
+)
 
 basicConfig(filename="logs/run_nested.log", level=DEBUG)
 
 logger = getLogger("main")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("identifier", help="get the unique code for the random seed folds", type=int)
+parser.add_argument(
+    "identifier",
+    help="get the unique code for the random seed folds",
+    type=int,
+    default=5,
+)
 args = parser.parse_args()
 
 
@@ -43,11 +51,11 @@ def main():
     # n_jobs: int = configs["n_jobs"]
     timeout: int = configs["timeout"]
     max_resources: int = configs["max_resources"]
-    n_candidates: int | Literal['exhaust'] = configs["n_candidates"]
+    n_candidates: int | Literal["exhaust"] = configs["n_candidates"]
     debug_mode: bool = configs["debug_mode"]
-    
+
     identifier: int = args.identifier
-    
+
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
     data: dict[str, Any] = load(path_to_features_data)
@@ -66,7 +74,6 @@ def main():
         labels_right = data["labels_right"]
         groups_left = data["groups_left"]
         groups_right = data["groups_right"]
-    
 
     # if artifacts:
     #     artefacts_left = data["artefacts_left"]
@@ -79,7 +86,7 @@ def main():
         [labels_right, labels_left],
         [groups_right, groups_left],
     ):
-        print(f'Starting {side} side')
+        print(f"Starting {side} side")
         (
             averaged_results_cv[side],
             all_results_cv[side],
@@ -100,9 +107,8 @@ def main():
             identifier=identifier,
         )
 
-
     for opposite_side in ["rxlx", "lxrx"]:
-        print(f'Starting {opposite_side} opposite side')
+        print(f"Starting {opposite_side} opposite side")
         (
             averaged_results_cv[opposite_side],
             all_results_cv[opposite_side],
@@ -132,7 +138,7 @@ def main():
         # Save each DataFrame in the dictionary to the HDF5 file
         for key, value in averaged_results_cv.items():
             store.put(key, value)
-            
+
     # Create an HDF5 file
     with HDFStore(path_to_save_data_all) as store:
         # Save each DataFrame in the dictionary to the HDF5 file
