@@ -199,14 +199,12 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
     DummyClassifier: {"strategy": ["stratified"]},
 }
 
-# CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
-#     NuSVC: {
-#         # large nus does not make it converge
-#         "nu": [0.1, 0.3, 0.5, 0.7, 0.9],
-#         "kernel": ["linear", "poly", "rbf", "sigmoid"],
-#         "degree": [2, 3, 4, 5],
-#         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
-#         "shrinking": [True, False],
-#         "max_iter": [1000000],
-#     },
-# }
+CLASSIFIERS_HYPERPARAMETER_LIST_FEATURE_SELECTION: dict[ClassifierMixin, dict[str, Any]] = {
+    XGBClassifier: {
+        "n_estimators": [100, 200, 300, 400, 500],
+        "learning_rate": [0.01, 0.1, 0.2, 0.3, 0.5],
+        "max_depth": [3, 4, 5, 6, 7],
+        "min_child_weight": [1, 2, 3, 4, 5],
+        "subsample": [0.7, 0.8, 0.9, 1.0],
+    },
+}
