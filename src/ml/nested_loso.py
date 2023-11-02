@@ -253,13 +253,13 @@ def compute_loso_same_side(
         .mean()
         .sort_values(by="Balanced Accuracy", ascending=False)
     )
-    standard_deviations = (
+    standard_errors = (
         concat(all_models)
         .groupby(level=0)
-        .std()
+        .sem()
         .sort_values(by="Balanced Accuracy", ascending=False)
     )
-    standard_errors = standard_deviations / (len(all_models) ** 0.5)
+    # standard_errors = standard_deviations / (len(all_models) ** 0.5)
 
     return all_models, concat(
         [averages, standard_errors],
@@ -340,7 +340,7 @@ def run_same_side_classifications(
         "Random seed iterations", total=len(list(possible_combinations))
     ):
         outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=8, backend="loky"
+            n_jobs=kwargs.get("n_jobs", 1), backend="loky"
         )(
             delayed(compute_loso_same_side)(
                 data=data,
@@ -625,7 +625,7 @@ def run_opposite_side_prediction(
         "Random seed iterations", total=len(list(possible_combinations))
     ):
         outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1),
+            n_jobs=kwargs.get("n_jobs", 1), backend='loky'
         )(
             delayed(compute_loso_opposite_side)(
                 features_right=features_right.reshape((features_right.shape[0], -1)),

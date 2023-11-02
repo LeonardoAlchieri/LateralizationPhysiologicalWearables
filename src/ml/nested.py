@@ -27,7 +27,6 @@ from sklearn.experimental import enable_halving_search_cv
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.model_selection import StratifiedKFold, HalvingRandomSearchCV
 from sklearn.pipeline import Pipeline, make_pipeline
-from tqdm.auto import tqdm
 
 from src.ml import local_resampling, resampling
 from src.ml.classifier_list import CLASSIFIERS_HYPERPARAMETER_LIST
@@ -95,8 +94,8 @@ def perform_grid_search_estimation(
             scoring="accuracy",
             cv=folds_inner,
             refit=True,
-            n_candidates=n_candidates,
-            max_resources=max_resources,
+            # n_candidates=n_candidates,
+            # max_resources=max_resources,
             # n_iter=max_resources,
             n_jobs=1,
             random_state=random_state_classifier,
@@ -316,13 +315,7 @@ def compute_outer_folds_same_side(
                 timeout=kwargs.get("timeout", None),
                 n_candidates=kwargs.get("n_candidates", "exhaust"),
             )
-            for train_index, test_index in tqdm(
-                folds,
-                desc=f"Outer folds progress id {id}, seeds: {random_state_classifier, random_state_undersampling, random_state_fold}",
-                colour="blue",
-                position=id + 2,
-                leave=False,
-            )
+            for train_index, test_index in folds
         ]
     else:
         raise NotImplementedError("Custom nested fold run method not implemented yet.")
@@ -406,17 +399,17 @@ def run_nested_cross_validation_prediction(
     # random seeds to be fed to the algorithm
     set_numpy_seed(generator_seeds[0])
     random_states_classifiers = randint(
-        0, 10000, n_seeds_to_test_classifiers
+        0, int(2**32-1), n_seeds_to_test_classifiers
     )
 
     # NOTE: to avoid dependencies between the seeds for the classifiers and those
     # for the cross validation, two "main" seeds are required, from which then
     # generate all of the others. This also allows reproducibility of the code.
     set_numpy_seed(generator_seeds[1])
-    random_states_folds = randint(0, 10000, n_seeds_to_test_folds)
+    random_states_folds = randint(0, int(2**32-1), n_seeds_to_test_folds)
 
     set_numpy_seed(generator_seeds[2])
-    random_states_undersampling = randint(0, 10000, n_seeds_to_undersample)
+    random_states_undersampling = randint(0, int(2**32-1), n_seeds_to_undersample)
 
     x = x.reshape((x.shape[0], -1))
     data = DataFrame(x, index=groups)
@@ -569,17 +562,17 @@ def run_opposite_side_prediction_hyper(
 ):
     set_numpy_seed(generator_seeds[0])
     random_states_classifiers = randint(
-        0, 10000, n_seeds_to_test_classifiers
+        0, int(2**32-1), n_seeds_to_test_classifiers
     )
 
     # NOTE: to avoid dependencies between the seeds for the classifiers and those
     # for the cross validation, two "main" seeds are required, from which then
     # generate all of the others. This also allows reproducibility of the code.
     set_numpy_seed(generator_seeds[1])
-    random_states_undersampling = randint(0, 10000, n_seeds_to_undersample)
+    random_states_undersampling = randint(0, int(2**32-1), n_seeds_to_undersample)
 
     set_numpy_seed(generator_seeds[2])
-    random_states_folds = randint(0, 10000, n_seeds_to_test_folds)
+    random_states_folds = randint(0, int(2**32-1), n_seeds_to_test_folds)
 
     # results = []
     # all_results: list[list[DataFrame]] = []

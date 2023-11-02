@@ -1,14 +1,14 @@
-path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_freqfet-3.npz"
-path_to_save_data_avgs: "./data.nosync/usilaughs/results/loso_nested_avgTEST.h5"
-path_to_save_data_all: "./data.nosync/usilaughs/results/loso_nested_allTEST.h5"
+path_to_features_data: "./data.nosync/mwc2022/features/EDA_features_noart_freqfet-3.npz"
+path_to_save_data_avgs: "./data.nosync/mwc2022/results/loso_nested_avg.h5"
+path_to_save_data_all: "./data.nosync/mwc2022/results/loso_nested_all.h5"
 generator_seeds:
   - 42 
   - 69
   - 420
-n_seeds_to_test_classifiers: 2
-n_seeds_to_test_folds: 2
-n_seeds_to_undersample: 2
+n_seeds_to_test_classifiers: 5
+n_seeds_to_test_folds: 5
+n_seeds_to_undersample: 5
 n_folds_inner: 5
 
-n_jobs: 20
-debug_mode: True
+n_jobs: 125
+debug_mode: False

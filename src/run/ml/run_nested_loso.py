@@ -42,6 +42,7 @@ def main():
     data: dict[str, Any] = load(path_to_features_data)
 
     if debug_mode:
+        print("!!! DEBUG MODE ACTIVATED !!!")
         features_left = data["features_left"][:100]
         features_right = data["features_right"][:100]
         labels_left = data["labels_left"][:100]
@@ -55,7 +56,8 @@ def main():
         labels_right = data["labels_right"]
         groups_left = data["groups_left"]
         groups_right = data["groups_right"]
-
+    
+    print('\n')
     averaged_results_cv, all_results_cv = dict(), dict()
     for side, side_features, side_labels, side_groups in zip(
         ["right", "left"],
@@ -79,6 +81,7 @@ def main():
             n_jobs=n_jobs,
         )
 
+    print('\n')
     for opposite_side in ["rxlx", "lxrx"]:
         print(f"Starting {opposite_side} opposite side")
 
