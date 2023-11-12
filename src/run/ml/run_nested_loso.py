@@ -4,8 +4,8 @@ from sys import path
 from typing import Any
 from json import dump
 
-from pandas import HDFStore
-from numpy import load
+from pandas import HDFStore, read_csv, DataFrame
+from numpy import load, ndarray
 
 path.append(".")
 from src.utils.io import load_config
@@ -36,6 +36,10 @@ def main():
     n_folds_inner: int = configs["n_folds_inner"]
     n_jobs: int = configs["n_jobs"]
     debug_mode: bool = configs["debug_mode"]
+    
+    subset_of_features: int = configs["subset_of_features"]
+    path_to_feature_importance_list_left: str = configs['path_to_feature_importance_list_left']
+    path_to_feature_importance_list_right: str = configs['path_to_feature_importance_list_right']
 
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
@@ -55,6 +59,23 @@ def main():
         labels_right = data["labels_right"]
         groups_left = data["groups_left"]
         groups_right = data["groups_right"]
+        
+    features_left = features_left.reshape(features_left.shape[0], -1)
+    features_right = features_right.reshape(features_right.shape[0], -1)
+        
+    if subset_of_features < 100:
+        
+        important_features_left: DataFrame = read_csv(path_to_feature_importance_list_left)
+        subset_of_features_num = int(subset_of_features * 0.01 * (len(important_features_left)))
+        important_features_left: ndarray = important_features_left.iloc[:subset_of_features_num, 0].values
+        
+        important_features_right: DataFrame = read_csv(path_to_feature_importance_list_right)
+        subset_of_features_num = int(subset_of_features * 0.01 * (len(important_features_right)))
+        important_features_right: ndarray = important_features_right.iloc[:subset_of_features_num, 0].values
+        
+        features_left = features_left[: ,important_features_left]
+        
+        features_right = features_right[: ,important_features_right]
 
     averaged_results_cv, all_results_cv = dict(), dict()
     for side, side_features, side_labels, side_groups in zip(
