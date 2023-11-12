@@ -1,6 +1,6 @@
-path_to_features_data: "./data.nosync/mwc2022/features/EDA_features_noart-2.npz"
-path_to_save_data_avgs: "./data.nosync/mwc2022/results/loso_avg.h5"
-path_to_save_data_all: "./data.nosync/mwc2022/results/loso_all.h5"
+path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart-3.npz"
+path_to_save_data_avgs: "./data.nosync/usilaughs/results/loso_avg.h5"
+path_to_save_data_all: "./data.nosync/usilaughs/results/loso_all.h5"
 generator_seeds:
   - 42 
   - 420

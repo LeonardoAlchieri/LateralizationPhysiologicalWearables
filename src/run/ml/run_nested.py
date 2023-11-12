@@ -5,8 +5,8 @@ from sys import path
 from typing import Any
 from json import dump
 
-from pandas import HDFStore
-from numpy import load
+from pandas import HDFStore, read_csv, DataFrame
+from numpy import load, ndarray
 
 path.append(".")
 from src.utils.io import load_config
@@ -39,6 +39,10 @@ def main():
     n_candidates: int | Literal['exhaust'] = configs["n_candidates"]
     debug_mode: bool = configs["debug_mode"]
     
+    subset_of_features: int = configs["subset_of_features"]
+    path_to_feature_importance_list_left: str = configs['path_to_feature_importance_list_left']
+    path_to_feature_importance_list_right: str = configs['path_to_feature_importance_list_right']
+    
     print(f"Nested CV for dataset {path_to_features_data.split('/')[2]}")
 
     data: dict[str, Any] = load(path_to_features_data)
@@ -51,12 +55,29 @@ def main():
         groups_left = data["groups_left"][:200]
         groups_right = data["groups_right"][:200]
     else:
-        features_left = data["features_left"]
-        features_right = data["features_right"]
-        labels_left = data["labels_left"]
-        labels_right = data["labels_right"]
-        groups_left = data["groups_left"]
-        groups_right = data["groups_right"]
+        features_left: ndarray = data["features_left"]
+        features_right: ndarray = data["features_right"]
+        labels_left: ndarray = data["labels_left"]
+        labels_right: ndarray = data["labels_right"]
+        groups_left: ndarray = data["groups_left"]
+        groups_right: ndarray = data["groups_right"]
+
+    features_left = features_left.reshape(features_left.shape[0], -1)
+    features_right = features_right.reshape(features_right.shape[0], -1)
+    if subset_of_features < 100:
+        
+        important_features_left: DataFrame = read_csv(path_to_feature_importance_list_left)
+        subset_of_features_num = int(subset_of_features * 0.01 * (len(important_features_left)))
+        important_features_left: ndarray = important_features_left.iloc[:subset_of_features_num, 0].values
+        
+        important_features_right: DataFrame = read_csv(path_to_feature_importance_list_right)
+        subset_of_features_num = int(subset_of_features * 0.01 * (len(important_features_right)))
+        important_features_right: ndarray = important_features_right.iloc[:subset_of_features_num, 0].values
+        
+        features_left = features_left[: ,important_features_left]
+        
+        features_right = features_right[: ,important_features_right]
+        
     
     print("\n")
     # if artifacts:
@@ -88,6 +109,8 @@ def main():
             timeout=timeout,
             max_resources=max_resources,
             n_candidate=n_candidates,
+            important_features_left=important_features_left,
+            important_features_right=important_features_right,
         )
 
 
@@ -113,6 +136,8 @@ def main():
             timeout=timeout,
             max_resources=max_resources,
             n_candidates=n_candidates,
+            important_features_left=important_features_left,
+            important_features_right=important_features_right,
         )
 
     # Create an HDF5 file
