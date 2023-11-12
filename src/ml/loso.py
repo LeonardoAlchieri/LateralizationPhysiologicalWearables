@@ -13,8 +13,8 @@ from tqdm.auto import tqdm
 from src.ml import resampling, data_augmentation
 
 def train_score_single_model(
-    groups_train: ndarray[str],
-    groups_test: ndarray[str],
+    groups_train: ndarray,
+    groups_test: ndarray,
     x_train: ndarray,
     x_test: ndarray,
     y_train: ndarray,

@@ -1,18 +1,22 @@
 path_to_features_data: "./data.nosync/mwc2022/features/EDA_features_noart_freqfet-3.npz"
-path_to_save_data_avgs: "./data.nosync/mwc2022/results/nested_avg_SMALL-test.h5"
-path_to_save_data_all: "./data.nosync/mwc2022/results/nested_all_SMALL-test.h5"
+path_to_save_data_avgs: "./data.nosync/mwc2022/results/nested_avg_xgboost_25top.h5"
+path_to_save_data_all: "./data.nosync/mwc2022/results/nested_all_xgboost_25top.h5"
 generator_seeds:
   - 0
   - 0
   - 0
-n_seeds_to_test_classifiers: 3
-n_seeds_to_test_folds: 3
-n_seeds_to_undersample: 3
+n_seeds_to_test_classifiers: 5
+n_seeds_to_test_folds: 5
+n_seeds_to_undersample: 5
 n_folds_outer: 5
-n_folds_inner: 3
+n_folds_inner: 5
 
-n_jobs: 27
+n_jobs: 1
 timeout: # seconds
 max_resources: 100 # max iterations permitted in each hyperparameter search. If empty, it will be set to "auto"
 n_candidates: 
 debug_mode: False
+
+subset_of_features: 25 # select percentage of features to select
+path_to_feature_importance_list_left: "./data.nosync/mwc2022/feature_importance/importance_xgboost_left.csv"
+path_to_feature_importance_list_right: "./data.nosync/mwc2022/feature_importance/importance_xgboost_right.csv"

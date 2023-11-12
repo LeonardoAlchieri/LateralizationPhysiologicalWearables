@@ -36,7 +36,7 @@ def calculate_persons_cor_ci(
     # Calculate confidence interval
     confidence_interval = pearsonr_ci(r=correlation_coefficient, n=len(s1), alpha=alpha)
 
-    return float(correlation_coefficient), tuple(
+    return float(correlation_coefficient), float(p_value), tuple(
         float(el) for el in confidence_interval
     )
 

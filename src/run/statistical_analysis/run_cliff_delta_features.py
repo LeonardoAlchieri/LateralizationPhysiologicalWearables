@@ -6,8 +6,9 @@ from json import dump
 
 from effect_size_analysis.cliff_delta import cliff_delta
 from numpy import load
-from pandas import Series
 from tqdm.auto import tqdm
+from joblib import Parallel, delayed
+from joblib_progress import joblib_progress
 
 path.append(".")
 from src.feature_extraction.eda import EDA_FEATURE_NAMES
@@ -24,6 +25,19 @@ CLIFF_DELTA_BINS = {
 }  # effect sizes from (Vargha and Delaney (2000)) "negligible" for the rest
 
 
+def compute_cliff_delta(
+    class_name, data_left, data_right, num_component, component_name, feature, alpha, i
+):
+    result = cliff_delta(
+        s1=data_left[:, i, num_component],
+        s2=data_right[:, i, num_component],
+        alpha=alpha,
+        accurate_ci=True,
+        raise_nan=False,
+    )
+    return (class_name, component_name, feature, result)
+
+
 def main():
     path_to_config: str = "src/run/statistical_analysis/config_cliff_delta_features.yml"
 
@@ -36,6 +50,7 @@ def main():
     # artifacts: bool = configs["artifacts"]
     alpha: int = configs.get("alpha", 0.05)
     components: list[str] = configs["components"]
+    n_jobs: int = configs["n_jobs"]
 
     data: dict[str, Any] = load(path_to_features_data)
 
@@ -57,23 +72,50 @@ def main():
     negative_data_right = features_right[labels_right == 0]
 
     cliff_delta_results = defaultdict(lambda: defaultdict(lambda: dict()))
-    for class_name, data_left, data_right in [
-        ("positive", positive_data_left, positive_data_right),
-        ("negative", negative_data_left, negative_data_right),
-    ]:
-        for num_component, component_name in enumerate(components):
-            for i, feature in tqdm(
-                enumerate(EDA_FEATURE_NAMES),
-                desc=f"Feature progress for component {component_name}, class {class_name}",
-                total=len(EDA_FEATURE_NAMES),
-            ):
-                cliff_delta_results[class_name][component_name][feature] = cliff_delta(
-                    s1=data_left[:, i, num_component],
-                    s2=data_right[:, i, num_component],
-                    alpha=alpha,
-                    accurate_ci=True,
-                    raise_nan=False,
-                )
+    # Parallelize the computation
+    with joblib_progress(
+        "Random seed iterations", total=len(EDA_FEATURE_NAMES) * len(components) * 2
+    ):
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(compute_cliff_delta)(
+                class_name,
+                data_left,
+                data_right,
+                num_component,
+                component_name,
+                feature,
+                alpha,
+                i,
+            )
+            for class_name, data_left, data_right in [
+                ("positive", positive_data_left, positive_data_right),
+                ("negative", negative_data_left, negative_data_right),
+            ]
+            for num_component, component_name in enumerate(components)
+            for i, feature in enumerate(EDA_FEATURE_NAMES)
+        )
+        # Store the results in the cliff_delta_results dictionary
+        for class_name, component_name, feature, result in results:
+            cliff_delta_results[class_name][component_name][feature] = result
+
+    # cliff_delta_results = defaultdict(lambda: defaultdict(lambda: dict()))
+    # for class_name, data_left, data_right in [
+    #     ("positive", positive_data_left, positive_data_right),
+    #     ("negative", negative_data_left, negative_data_right),
+    # ]:
+    #     for num_component, component_name in enumerate(components):
+    #         for i, feature in tqdm(
+    #             enumerate(EDA_FEATURE_NAMES),
+    #             desc=f"Feature progress for component {component_name}, class {class_name}",
+    #             total=len(EDA_FEATURE_NAMES),
+    #         ):
+    #             cliff_delta_results[class_name][component_name][feature] = cliff_delta(
+    #                 s1=data_left[:, i, num_component],
+    #                 s2=data_right[:, i, num_component],
+    #                 alpha=alpha,
+    #                 accurate_ci=True,
+    #                 raise_nan=False,
+    #             )
 
     # save dictionary to json file
     with open(path_to_save_data, "w") as f:
