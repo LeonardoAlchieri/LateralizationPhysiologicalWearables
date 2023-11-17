@@ -94,12 +94,22 @@ def compute_statistics(
     cliff_delta_pvals_significant = cliff_delta_pvals[
         cliff_delta_pvals["above_threshold"] == True
     ]
-    val_pos_bigger = cliff_delta_pvals_significant["negative_bigger?"].value_counts()[
-        False
-    ]
-    val_neg_bigger = cliff_delta_pvals_significant["negative_bigger?"].value_counts()[
-        True
-    ]
+    mapping_negatives = cliff_delta_pvals_significant["negative_bigger?"].value_counts()
+    if len(mapping_negatives) == 2:
+        val_pos_bigger = mapping_negatives[
+            False
+        ]
+        val_neg_bigger = mapping_negatives[
+            True
+        ]
+    else:
+        if mapping_negatives.index[0] == True:
+            val_pos_bigger = 0
+            val_neg_bigger = mapping_negatives[True]
+        else:
+            val_pos_bigger = mapping_negatives[True]
+            val_neg_bigger = 0
+            
     val_no_dif = len(cliff_delta_pvals[cliff_delta_pvals["above_threshold"] == False])
 
     val_pos_bigger = val_pos_bigger / len(values_w_intervals)
@@ -115,6 +125,7 @@ def compute_statistics(
     print(
         f"Percentage of intervals where there is no difference: {val_no_dif*100:.2f}%"
     )
+    return cliff_delta_pvals
 
 
 def prepare_dataframe_with_class_labels_columns(
@@ -147,6 +158,7 @@ def make_plot(
     classes_list: list[str] = ["positive", "negative"],
     ylim: tuple[float, float] = (-0.6, 0.6),
     make_thresholds: bool = True,
+    marker: str | None = None,
 ) -> None:
     # set the figure size using the golden ratio
     golden_ratio = (5**0.5 - 1) / 2
@@ -177,8 +189,9 @@ def make_plot(
                 ax=ax,
                 custom_label=event_actual_name,
                 elinewidth=10,
-                markersize=2,
+                markersize=4,
                 component=component,
+                marker=marker,
             )
         ax.set_title(component)
 
