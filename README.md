@@ -21,23 +21,54 @@ While the order of scripts is not important, to run them using the order we perf
         sh src/run/pre_processing_run_all_preprocessing.sh
     ```
 We suggest to use this, since other configurations would require to change a little bit the configuration files.
+Finally, to prepare the data for effect size and correlation:
 
-## Statistical Analysis
+1. Segment the data:
+```bash
+python src/run/feature_extraction/run_segmentation.py
+```
+2. Extract hand-crafted features from each segment:
+```bash
+python src/run/feature_extraction/run_feature_extraction.py
+```
 
-To run the statistical analysis, and replicate the plots shown in the paper, you can just do:
-    ```bash
-        python src/run/statistical_analysis/run_statistical_feature.py
-    ```
-The script will use a configuration file (`src/run/statistical_analysis/config_statistical_feature.yml`), which by default has the same values used by us. I would suggest to only change the path to the data.
-
-*WARNING*: the script will fail if it cannot find a `logs` folder and a `visualizations` folder in the root of the repo. While I plan to automate this easily, for the moment please just create them.
 
 ## Machine Learning Task
 
+There are several machine learning tasks available. To emulate the work performed in the paper, and specifically run the $5\times5$, Leave One Body side Out and Leave One Subject Out cross validations, use the following:
+
+1. To perform $5\times5$ cv and LOBO (at the same time):
+```bash
+python src/run/ml/run_nested.py
+```
+2. To perform LOSO cv, run:
+```bash
+python src/run/ml/run_nested_loso.py
+```
+Each python file is associated with a config file, which allows to change, for example, between the two datasets. For each specific configuration available, see the configs themselves.
+
+## Statistical Analysis
+
+THe paper presents a statistical analysis. In particular, we performed correlation analysis using the Detrended Time-Lagged Correlation Coefficient, whose library we have also released (see https://pypi.org/project/dcca/). Then, we computed effect size analysis using Cliff's $\delta$ with confidence intervals. We released for this one as well a library to perform the calculation for Cliff's $\delta$ and its confidence interval (see https://pypi.org/project/effect-size-analysis/). Finally, we also computed the correlation between features extracted from the left and right side.
+
+To run these, use:
+1. Detrended Time-Lagged Correlation Coefficient between left and right-hand signals:
+<!-- TODO -->
+2. Effect size analysis:
+```bash
+python src/statistical_analysis/run_cliff_delta_features.py
+```
+3. Correlation features:
+```bash
+python src/statistical_analysis/run_correlation_rl_features.py
+```
+
+## Plots
+The scripts above allow to calculate the results, but not to make the plots present in the paper. To make the plots, run the following scripts:
+<!-- TODO -->
 
 
-
-@2022, Leonardo Alchieri, Nouran Abdalazim, Lidia Alecci, Shkurta Gashi, Elena Di Lascio, Silvia Santini
+@2023, Leonardo Alchieri, Nouran Abdalazim, Lidia Alecci, Shkurta Gashi, Elena Di Lascio, Silvia Santini
  
 Contact: leonardo.alchieri@usi.ch
 
