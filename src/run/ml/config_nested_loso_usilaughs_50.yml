@@ -1,0 +1,18 @@
+path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_freqfet-3.npz"
+path_to_save_data_avgs: "./data.nosync/usilaughs/results/loso_nested_avg_xgboost_50top.h5"
+path_to_save_data_all: "./data.nosync/usilaughs/results/loso_nested_all_xgboost_50top.h5"
+generator_seeds:
+  - 42 
+  - 69
+  - 420
+n_seeds_to_test_classifiers: 5
+n_seeds_to_test_folds: 5
+n_seeds_to_undersample: 5
+n_folds_inner: 5
+
+n_jobs: 125
+debug_mode: False
+
+subset_of_features: 50 # select percentage of features to select
+path_to_feature_importance_list_left: "./data.nosync/usilaughs/feature_importance/importance_xgboost_loso_left.csv"
+path_to_feature_importance_list_right: "./data.nosync/usilaughs/feature_importance/importance_xgboost_loso_right.csv"

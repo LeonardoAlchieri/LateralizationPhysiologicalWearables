@@ -322,6 +322,7 @@ def compute_outer_folds_same_side(
                 colour="blue",
                 position=id + 2,
                 leave=False,
+                disable=True
             )
         ]
     else:

@@ -1,6 +1,6 @@
 path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_freqfet-3.npz"
-path_to_save_data_avgs: "./data.nosync/usilaughs/results/nested_avg_xgboost_25top.h5"
-path_to_save_data_all: "./data.nosync/usilaughs/results/nested_all_xgboost_25top.h5"
+path_to_save_data_avgs: "./data.nosync/usilaughs/results/nested_avg_xgboost_50top.h5"
+path_to_save_data_all: "./data.nosync/usilaughs/results/nested_all_xgboost_50top.h5"
 generator_seeds:
   - 42 
   - 69
@@ -17,6 +17,6 @@ max_resources: 'auto' # max iterations permitted in each hyperparameter search. 
 n_candidates: 'exhaust'
 debug_mode: False
 
-subset_of_features: 25 # select percentage of features to select
+subset_of_features: 50 # select percentage of features to select
 path_to_feature_importance_list_left: "./data.nosync/usilaughs/feature_importance/importance_xgboost_left.csv"
 path_to_feature_importance_list_right: "./data.nosync/usilaughs/feature_importance/importance_xgboost_right.csv"
