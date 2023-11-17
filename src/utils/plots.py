@@ -27,7 +27,7 @@ from matplotlib.pyplot import (
     axhline,
     tick_params,
     ylim,
-    margins
+    margins,
 )
 from numpy import asarray, mean, ndarray, std, unique
 from pandas import DataFrame, IndexSlice, Series, Timestamp, to_datetime
@@ -497,11 +497,11 @@ def plot_binary_labels(
     small_fontsize: int = 10,
     medium_fontsize: int = 14,
     large_fontsize: int = 18,
-    legend_params: dict = dict(bbox_to_anchor=(0.9, 1), loc='best', borderaxespad=0),
+    legend_params: dict = dict(bbox_to_anchor=(0.9, 1), loc="best", borderaxespad=0),
     output_folder: str = "./visualizations/",
 ):
     # set_seaborn(font_scale=1)
-    
+
     # set the figure size using the golden ratio
     golden_ratio = (5**0.5 - 1) / 2
 
@@ -511,16 +511,16 @@ def plot_binary_labels(
     # # set latex font
     rcParams["mathtext.fontset"] = "stix"
     rcParams["font.family"] = "STIXGeneral"
-    
+
     # increase font size
-    
-    rc('font', size=small_fontsize)          # controls default text sizes
-    rc('axes', titlesize=medium_fontsize)     # fontsize of the axes title
-    rc('axes', labelsize=large_fontsize)    # fontsize of the x and y labels
-    rc('xtick', labelsize=small_fontsize)    # fontsize of the tick labels
-    rc('ytick', labelsize=small_fontsize)    # fontsize of the tick labels
-    rc('legend', fontsize=medium_fontsize)    # legend fontsize
-    rc('figure', titlesize=large_fontsize)  # fontsize of the figure title
+
+    rc("font", size=small_fontsize)  # controls default text sizes
+    rc("axes", titlesize=medium_fontsize)  # fontsize of the axes title
+    rc("axes", labelsize=large_fontsize)  # fontsize of the x and y labels
+    rc("xtick", labelsize=small_fontsize)  # fontsize of the tick labels
+    rc("ytick", labelsize=small_fontsize)  # fontsize of the tick labels
+    rc("legend", fontsize=medium_fontsize)  # legend fontsize
+    rc("figure", titlesize=large_fontsize)  # fontsize of the figure title
     rcParams.update({"font.size": medium_fontsize})
 
     fig, ax = subplots(figsize=(figsize, figsize * golden_ratio))
@@ -547,6 +547,7 @@ def make_errorplot(
     elinewidth: int = 30,
     markersize: int = 10,
     component: str = "mixed-EDA",
+    marker: str | None = None,
 ) -> None:
     bounds = [
         literal_eval(el)
@@ -554,28 +555,81 @@ def make_errorplot(
             IndexSlice[component, :], IndexSlice[type_event, "confidence interval"]
         ].values
     ]
-    values = cliff_deltas.loc[IndexSlice[component, :], IndexSlice[type_event, "value"]].astype(float).values
+    values = (
+        cliff_deltas.loc[IndexSlice[component, :], IndexSlice[type_event, "value"]]
+        .astype(float)
+        .values
+    )
     lower_bounds = [abs(val - el[0]) for el, val in zip(bounds, values)]
     upper_bounds = [abs(el[1] - val) for el, val in zip(bounds, values)]
 
     if custom_label is None:
         custom_label = type_event
 
-    ax.errorbar(
-        x=["_".join(el) for el in cliff_deltas.loc[IndexSlice[component, :], :].index],
-        y=values,
-        yerr=(lower_bounds, upper_bounds),
-        label=custom_label,
-        elinewidth=elinewidth,
-        linestyle="none",
-        markersize=markersize,
-        marker=".",
-        color=color,
-        ecolor=(*color, 0.3),
-    )
+    if marker:
+        markers = ["+", "."]
+        for i, unique_val_in_col in enumerate(sorted(cliff_deltas.loc[IndexSlice[component, :], (type_event, marker)].unique(), reverse=True)):
+            
+            subset_df = cliff_deltas.loc[IndexSlice[component, :],:][cliff_deltas.loc[IndexSlice[component, :], (type_event, marker)] == unique_val_in_col]
+            values = (
+                subset_df
+                .loc[IndexSlice[component, :], IndexSlice[type_event, "value"]]
+                .astype(float)
+                .values
+            )
+            bounds = [
+                literal_eval(el)
+                for el in subset_df
+                .loc[
+                    IndexSlice[component, :],
+                    IndexSlice[type_event, "confidence interval"],
+                ]
+                .values
+            ]
+            lower_bounds = [abs(val - el[0]) for el, val in zip(bounds, values)]
+            upper_bounds = [abs(el[1] - val) for el, val in zip(bounds, values)]
+            ax.errorbar(
+                x=[
+                    "_".join(el)
+                    for el in subset_df
+                    .loc[IndexSlice[component, :], :]
+                    .index
+                ],
+                y=values,
+                yerr=(lower_bounds, upper_bounds),
+                label=custom_label if i == 0 else None,
+                elinewidth=elinewidth,
+                linestyle="none",
+                markersize=markersize,
+                marker=markers[i],
+                color=color,
+                ecolor=(*color, 0.3),
+            )
+        ...
+    else:
+        ax.errorbar(
+            x=[
+                "_".join(el)
+                for el in cliff_deltas.loc[IndexSlice[component, :], :].index
+            ],
+            y=values,
+            yerr=(lower_bounds, upper_bounds),
+            label=custom_label,
+            elinewidth=elinewidth,
+            linestyle="none",
+            markersize=markersize,
+            marker=".",
+            color=color,
+            ecolor=(*color, 0.3),
+        )
 
 
-def cliff_delta_plot(cliff_deltas: DataFrame, dataset: str, figsize: int = 7, path_to_save_figure: str = "./final_visualizations") -> None:
+def cliff_delta_plot(
+    cliff_deltas: DataFrame,
+    dataset: str,
+    figsize: int = 7,
+    path_to_save_figure: str = "./final_visualizations",
+) -> None:
     # set the figure size using the golden ratio
     golden_ratio = (5**0.5 - 1) / 2
 
