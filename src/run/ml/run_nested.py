@@ -12,13 +12,22 @@ path.append(".")
 from src.utils.io import load_config
 from src.ml.nested import run_nested_cross_validation_prediction, run_opposite_side_prediction_hyper
 
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("config_path", help="echo the string you use here")
+args = parser.parse_args()
+
 basicConfig(filename="logs/run_nested.log", level=DEBUG)
 
 logger = getLogger("main")
 
 
 def main():
-    path_to_config: str = "src/run/ml/config_nested.yml"
+    # get the path to config using argparse   
+    path_to_config: str = str(args.config_path)
+    
+    # path_to_config: str = "src/run/ml/config_nested.yml"
+    
 
     logger.info("Starting model training")
     configs: dict[str, Any] = load_config(path=path_to_config)
@@ -70,13 +79,19 @@ def main():
         subset_of_features_num = int(subset_of_features * 0.01 * (len(important_features_left)))
         important_features_left: ndarray = important_features_left.iloc[:subset_of_features_num, 0].values
         
+        
         important_features_right: DataFrame = read_csv(path_to_feature_importance_list_right)
         subset_of_features_num = int(subset_of_features * 0.01 * (len(important_features_right)))
         important_features_right: ndarray = important_features_right.iloc[:subset_of_features_num, 0].values
         
+        features_left_opposite = features_left[: ,important_features_right]
+        features_right_opposite = features_right[: ,important_features_left]
+        
         features_left = features_left[: ,important_features_left]
         
+        
         features_right = features_right[: ,important_features_right]
+        
         
     
     print("\n")
@@ -117,28 +132,53 @@ def main():
     print("\n")
     for opposite_side in ["rxlx", "lxrx"]:
         print(f'Starting {opposite_side} opposite side')
-        (
-            averaged_results_cv[opposite_side],
-            all_results_cv[opposite_side],
-        ) = run_opposite_side_prediction_hyper(
-            features_right=features_right,
-            labels_right=labels_right,
-            groups_right=groups_right,
-            features_left=features_left,
-            labels_left=labels_left,
-            groups_left=groups_left,
-            which_comparison=opposite_side,
-            generator_seeds=generator_seeds,
-            n_seeds_to_test_folds=n_seeds_to_test_folds,
-            n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
-            n_seeds_to_undersample=n_seeds_to_undersample,
-            n_jobs=n_jobs,
-            timeout=timeout,
-            max_resources=max_resources,
-            n_candidates=n_candidates,
-            important_features_left=important_features_left,
-            important_features_right=important_features_right,
-        )
+        if opposite_side == "rxlx":
+            
+            (
+                averaged_results_cv[opposite_side],
+                all_results_cv[opposite_side],
+            ) = run_opposite_side_prediction_hyper(
+                features_right=features_right,
+                labels_right=labels_right,
+                groups_right=groups_right,
+                features_left=features_left_opposite,
+                labels_left=labels_left,
+                groups_left=groups_left,
+                which_comparison=opposite_side,
+                generator_seeds=generator_seeds,
+                n_seeds_to_test_folds=n_seeds_to_test_folds,
+                n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
+                n_seeds_to_undersample=n_seeds_to_undersample,
+                n_jobs=n_jobs,
+                timeout=timeout,
+                max_resources=max_resources,
+                n_candidates=n_candidates,
+                important_features_left=important_features_left,
+                important_features_right=important_features_right,
+            )
+        else:
+            (
+                averaged_results_cv[opposite_side],
+                all_results_cv[opposite_side],
+            ) = run_opposite_side_prediction_hyper(
+                features_right=features_right_opposite,
+                labels_right=labels_right,
+                groups_right=groups_right,
+                features_left=features_left,
+                labels_left=labels_left,
+                groups_left=groups_left,
+                which_comparison=opposite_side,
+                generator_seeds=generator_seeds,
+                n_seeds_to_test_folds=n_seeds_to_test_folds,
+                n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
+                n_seeds_to_undersample=n_seeds_to_undersample,
+                n_jobs=n_jobs,
+                timeout=timeout,
+                max_resources=max_resources,
+                n_candidates=n_candidates,
+                important_features_left=important_features_left,
+                important_features_right=important_features_right,
+            )
 
     # Create an HDF5 file
     with HDFStore(path_to_save_data_avgs) as store:

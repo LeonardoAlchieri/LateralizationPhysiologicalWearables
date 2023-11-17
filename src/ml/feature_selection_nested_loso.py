@@ -10,7 +10,7 @@ from pandas import DataFrame, IndexSlice, concat
 from tqdm.auto import tqdm
 from joblib_progress import joblib_progress
 
-from src.ml.nested import (
+from src.ml.feature_selection_nested import (
     fit_with_hyperparameters,
     resample_train_data,
 )
@@ -251,15 +251,15 @@ def compute_loso_same_side(
         concat(all_models)
         .groupby(level=0)
         .mean()
-        .sort_values(by="Balanced Accuracy", ascending=False)
+        # .sort_values(by="Balanced Accuracy", ascending=False)
     )
-    standard_deviations = (
+    standard_errors = (
         concat(all_models)
         .groupby(level=0)
-        .std()
-        .sort_values(by="Balanced Accuracy", ascending=False)
+        .sem()
+        # .sort_values(by="Balanced Accuracy", ascending=False)
     )
-    standard_errors = standard_deviations / (len(all_models) ** 0.5)
+    # standard_errors = standard_deviations / (len(all_models) ** 0.5)
 
     return all_models, concat(
         [averages, standard_errors],
@@ -361,7 +361,7 @@ def run_same_side_classifications(
         .groupby(level=0)
         .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
         .droplevel(axis=1, level=0)
-        .sort_values(by=("Balanced Accuracy"), ascending=False)
+        # .sort_values(by=("Balanced Accuracy"), ascending=False)
     )
 
     errors_seeds = (
@@ -376,7 +376,7 @@ def run_same_side_classifications(
             )
         )
         .droplevel(axis=1, level=0)
-        .sort_values(by="Balanced Accuracy", ascending=False)
+        # .sort_values(by="Balanced Accuracy", ascending=False)
     )
     return (
         concat(
@@ -660,7 +660,7 @@ def run_opposite_side_prediction(
         .groupby(level=0)
         .apply(
             lambda x: (x.loc[:, IndexSlice["Standard error", :]] ** 2).sum() ** 0.5
-            / (n_seeds_to_test_classifiers * n_seeds_to_undersample)
+            / (n_seeds_to_test_classifiers * n_seeds_to_undersample * n_seeds_to_test_classifiers)
         )
         .droplevel(axis=1, level=0)
         .sort_values(by="Balanced Accuracy", ascending=False)
