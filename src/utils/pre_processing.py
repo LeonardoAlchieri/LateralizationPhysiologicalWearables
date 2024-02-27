@@ -4,10 +4,11 @@ from logging import getLogger
 from typing import Callable
 
 from joblib import Parallel, delayed
-from numpy import array, ndarray, stack, nanmean, nanstd, log1p
-from pandas import Series, concat, DataFrame
+from numpy import array, log1p, nanmean, nanstd, ndarray, stack
+from pandas import DataFrame, IndexSlice, Series, concat
+from sklearn.preprocessing import (PowerTransformer, QuantileTransformer,
+                                   RobustScaler)
 from tqdm.auto import tqdm
-from sklearn.preprocessing import RobustScaler, QuantileTransformer, PowerTransformer
 
 from src.utils import prepare_data_for_concatenation
 
@@ -95,7 +96,11 @@ def rescaling(
                 user: {
                     session: DataFrame(
                         rescaling_method(data[side][user][session])
-                        if isinstance(data[side][user][session], Series) or (isinstance(data[side][user][session], DataFrame) and len(data[side][user][session].columns) == 1)
+                        if isinstance(data[side][user][session], Series)
+                        or (
+                            isinstance(data[side][user][session], DataFrame)
+                            and len(data[side][user][session].columns) == 1
+                        )
                         else stack(
                             [
                                 rescaling_method(data[side][user][session].iloc[:, 0]),
@@ -104,7 +109,9 @@ def rescaling(
                             axis=1,
                         ),
                         index=data[side][user][session].index,
-                        columns=data[side][user][session].columns if isinstance(data[side][user][session], DataFrame) else None
+                        columns=data[side][user][session].columns
+                        if isinstance(data[side][user][session], DataFrame)
+                        else None,
                     )
                     for session in data[side][user].keys()
                 }
@@ -176,6 +183,7 @@ def standardize(signal: Series | ndarray | list) -> ndarray:
     yn: ndarray = (y - nanmean(y)) / nanstd(y)
     return yn
 
+
 def min_max_normalization(signal: Series | ndarray | list) -> ndarray:
     """Simple method to normalize an EDA signal.
 
@@ -209,6 +217,7 @@ def robust_scaling_with_irq(signal: Series | ndarray | list) -> ndarray:
     scaler = RobustScaler()
     return scaler.fit_transform(y.reshape(-1, 1)).flatten()
 
+
 def log_transformation(signal: Series | ndarray | list) -> ndarray:
     """
     Perform Log Transformation on the input data.
@@ -222,6 +231,7 @@ def log_transformation(signal: Series | ndarray | list) -> ndarray:
     y: ndarray = array((signal))
     return log1p(y)
 
+
 def yeo_johnson_transformation(signal: Series | ndarray | list) -> ndarray:
     """
     Perform Yeo-Johnson Transformation on the input data.
@@ -233,8 +243,9 @@ def yeo_johnson_transformation(signal: Series | ndarray | list) -> ndarray:
         ndarray: Transformed data of shape (N,) using Yeo-Johnson Transformation.
     """
     y: ndarray = array((signal))
-    transformer = PowerTransformer(method='yeo-johnson')
+    transformer = PowerTransformer(method="yeo-johnson")
     return transformer.fit_transform(y.reshape(-1, 1)).flatten()
+
 
 def quantile_transformation(signal: Series | ndarray | list) -> ndarray:
     """
@@ -247,7 +258,7 @@ def quantile_transformation(signal: Series | ndarray | list) -> ndarray:
         ndarray: Transformed data of shape (N,) using Quantile Transformation.
     """
     y: ndarray = array((signal))
-    transformer = QuantileTransformer(output_distribution='uniform')
+    transformer = QuantileTransformer(output_distribution="uniform")
     return transformer.fit_transform(y.reshape(-1, 1)).flatten()
 
 
@@ -276,3 +287,96 @@ def get_rescaling_technique(rescaling_name: str) -> Callable:
         return quantile_transformation
     else:
         raise ValueError(f"Invalid rescaling method: {rescaling_name}")
+
+
+def trim_to_shortest(
+    signal_data: dict[str, defaultdict[str, defaultdict[str, DataFrame]]],
+) -> dict[str, defaultdict[str, defaultdict[str, DataFrame]]]:
+    """This method trims the physiological data to the shortest session length,
+    between data from the left and right side of the body. Necessary only for the
+    BiHeartS dataset, since for USILaughs the sessions match perfectly.
+
+    Parameters
+    ----------
+    signal_data : dict[str, defaultdict[str, defaultdict[str, DataFrame]]]
+        data to be trimmed
+
+    Returns
+    -------
+    dict[str, defaultdict[str, defaultdict[str, DataFrame]]]
+        same as input data for the format, but with each timeseries trimmed to the
+        shortest length of the two sides
+
+    Raises
+    ------
+    RuntimeError
+        _description_
+    RuntimeError
+        _description_
+    """
+    new_physiological_data = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+
+    users_left = list(signal_data["left"].keys())
+    users_right = list(signal_data["right"].keys())
+    users = list(set(users_left) & set(users_right))
+    for user in tqdm(users, desc=f"Trimming. User progress"):
+        user_data_left: DataFrame = signal_data["left"][user]
+        user_data_right: DataFrame = signal_data["right"][user]
+        sessions_left = user_data_left.index.get_level_values("session").unique()
+        sessions_right = user_data_right.index.get_level_values("session").unique()
+        sessions = list(set(sessions_left) & set(sessions_right))
+        for session in sessions:
+            session_data_left = user_data_left.loc[IndexSlice[session, :], :].droplevel(
+                level=0, axis=0
+            )
+            session_data_right = user_data_right.loc[
+                IndexSlice[session, :], :
+            ].droplevel(level=0, axis=0)
+
+            max_start = max(
+                session_data_left.index.get_level_values("timestamp").min(),
+                session_data_right.index.get_level_values("timestamp").min(),
+            )
+            min_end = min(
+                session_data_left.index.get_level_values("timestamp").max(),
+                session_data_right.index.get_level_values("timestamp").max(),
+            )
+
+            session_data_left = session_data_left[
+                (session_data_left.index >= max_start)
+                & (session_data_left.index <= min_end)
+            ]
+            session_data_right = session_data_right[
+                (session_data_right.index >= max_start)
+                & (session_data_right.index <= min_end)
+            ]
+            if session_data_left.shape != session_data_right.shape:
+                longest_index = (
+                    session_data_left.index
+                    if session_data_left.shape[0] > session_data_right.shape[0]
+                    else session_data_right.index
+                )
+                shortest_index = (
+                    session_data_right.index
+                    if session_data_left.shape[0] > session_data_right.shape[0]
+                    else session_data_left.index
+                )
+                for el in longest_index:
+                    if el not in shortest_index:
+                        cutoff_index = el
+                        break
+                session_data_left = session_data_left[
+                    (session_data_left.index < cutoff_index)
+                ]
+                session_data_right = session_data_right[
+                    (session_data_right.index < cutoff_index)
+                ]
+                if session_data_left.shape != session_data_right.shape:
+                    raise RuntimeError("fuck")
+
+            if len(session_data_left) == 0:
+                raise RuntimeError("double fuck")
+            new_physiological_data["left"][user][session] = session_data_left
+            new_physiological_data["right"][user][session] = session_data_right
+
+    return new_physiological_data

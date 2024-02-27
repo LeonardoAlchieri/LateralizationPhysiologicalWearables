@@ -16,7 +16,7 @@ from src.ml.nested_loso import (
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("config_path", help="echo the string you use here")
+parser.add_argument("config_path", help="path for the config file used")
 args = parser.parse_args()
 
 basicConfig(filename="logs/run_nested_loso.log", level=DEBUG)
