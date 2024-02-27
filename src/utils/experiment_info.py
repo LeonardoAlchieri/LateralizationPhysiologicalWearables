@@ -1,5 +1,6 @@
 from copy import deepcopy
 from warnings import warn
+from collections import defaultdict
 
 from numpy import nan
 from pandas import DataFrame, MultiIndex, concat, to_datetime, Series, IndexSlice
@@ -154,7 +155,71 @@ class ExperimentInfo:
 
         if not inplace:
             return self.data
-        
+
     def get_mode(self) -> int:
         return self.mode
+
+
+def segmentation_over_label(
+    session_data: DataFrame, user_experiment_info: Series,  mode: int, session_name: str | None = None,
+) -> DataFrame:
+    if mode == 1:
+        event_keywords: list[str] = list(
+            set(
+                [
+                    event_name.replace("start_", "")
+                    if "start" in event_name
+                    else event_name.replace("end_", "")
+                    for event_name in user_experiment_info.index
+                ]
+            )
+        )
+        return {
+            event: session_data.loc[
+                user_experiment_info["start_" + event] : user_experiment_info[
+                    "end_" + event
+                ]
+            ]
+            for event in event_keywords
+        }
+    elif mode == 2:
+        if session_name is None:
+            raise ValueError(f'For mode 2, session_name must be provided. Got {session_name}')
         
+        session_info = user_experiment_info.loc[IndexSlice[:, session_name], :]
+        result_dict: dict[str, DataFrame] = {}
+        result_dict.update(
+            {"sleep": session_data.loc[session_info['actual_bed_time'].iloc[0] : session_info['wake_up_time'].iloc[0]]}
+        )
+        result_dict.update(
+            {"awake_1": session_data.loc[:session_info['actual_bed_time'].iloc[0]]}
+        )
+        result_dict.update(
+            {"awake_2": session_data.loc[session_info['wake_up_time'].iloc[0]:]}
+        )
+        return result_dict
+    else:
+        raise ValueError(f"Mode must be 1 or 2. Got {mode}")
+
+    ...
+
+
+def separate_raw_signal_by_label(
+    data: dict[str, defaultdict[str, defaultdict[str, DataFrame]]],
+    experiment_info: ExperimentInfo,
+):
+
+    data_with_labels: dict[str, dict[str, dict[str, DataFrame]]] = {
+        side: {
+            user: {session: segmentation_over_label(session_data=session_data, 
+                                                    user_experiment_info=experiment_info.to_dict()[user], 
+                                                    mode=experiment_info.get_mode(),
+                                                    session_name=session)
+                   for session, session_data in user_data.items()}
+            for user, user_data in side_data.items()
+        }
+        for side, side_data in data.items()
+    }
+
+    return data_with_labels
+    ...

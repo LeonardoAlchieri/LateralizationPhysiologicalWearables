@@ -1,3 +1,10 @@
+####################################
+####################################
+###### NOTICE: THIS IS NOT USED AND THE RESULTS ARE ACTUALLY NOT CORRECTLY FORMATTED
+###### THE RESULTS SHOULD BE SEPARATED BY LABEL (0 OR 1), BUT IT DOES NOT RIGHT NOW
+####################################
+####################################
+
 from logging import DEBUG, INFO, basicConfig, getLogger
 from sys import path
 from json import dump as json_dump

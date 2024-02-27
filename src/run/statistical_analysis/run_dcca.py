@@ -12,9 +12,11 @@ from tqdm.notebook import tqdm
 path.append(".")
 from src.utils.dcca import detrended_correlation
 from src.utils.dcca.cross_correlation import cross_correlation
-from src.utils.io import load_config, load_processed_data
+from src.utils.io import load_config, load_processed_data, filter_sleep_nights
 from src.utils.plots import plot_heatmap_boxplot
 from src.utils.pre_processing import trim_to_shortest
+from src.utils.experiment_info import ExperimentInfo, separate_raw_signal_by_label
+from src.utils import filter_user
 
 basicConfig(filename="logs/run_stationarity_tests.log", level=DEBUG)
 
@@ -34,8 +36,8 @@ def time_lagged_cross_correlation_per_user(
         max_time_lag = len(right_side_data)
     # TODO: implement negative time lags
 
-    if right_side_data.shape[0] == 0 or left_side_data.shape[0] == 0:
-        warn(f'No data for current input {kwargs.get("progress_item_name", None)}')
+    if right_side_data.shape[0] <= time_scale or left_side_data.shape[0] <= time_scale:
+        warn(f'Too little data for current input {kwargs.get("progress_item_name", None)}')
         return []
     time_lags = range(0, max_time_lag)
 
@@ -56,6 +58,7 @@ def time_lagged_cross_correlation_per_user(
                     time_lags,
                     desc=f'Calculating detrended cross correlation {kwargs.get("progress_item_name", None)}',
                     colour=kwargs.get("tqdm_color", "green"),
+                    disable=kwargs.get("tqdm_disable", False),
                 )
             )
         except ValueError as e:
@@ -91,19 +94,25 @@ def perform_correlation(
 
     dccas = {
         user: {
-            session_name: time_lagged_cross_correlation_per_user(
-                right_side_data=physiological_data["right"][user][session_name]
+            session_name: {
+                event: time_lagged_cross_correlation_per_user(
+                right_side_data=physiological_data["right"][user][session_name][event]
                 .iloc[:, 0]
                 .values,
-                left_side_data=physiological_data["left"][user][session_name]
+                left_side_data=physiological_data["left"][user][session_name][event]
                 .iloc[:, 0]
                 .values,
                 time_scale=time_scale,
                 detrended=detrended,
                 max_time_lag=max_time_lag,
                 n_jobs=n_jobs,
-                progress_item_name=f"{user}_{session_name}",
+                progress_item_name=f"{user}_{session_name}_{event}",
+                tqdm_disable=True,
             )
+                for event in list(
+                set(physiological_data["right"][user][session_name].keys())
+                & set(physiological_data["left"][user][session_name].keys())
+            )}
             for session_name in list(
                 set(physiological_data["right"][user].keys())
                 & set(physiological_data["left"][user].keys())
@@ -141,12 +150,39 @@ def main():
     path_to_data: str = configs["path_to_data"]
     data_format: str = configs["data_format"]
     path_to_save_data: str = configs["path_to_save_data"]
+    path_to_experiment_info: str = configs["path_to_experiment_info"]
+    mode: int = configs["mode"]
     time_scale: int = configs["time_scale"]
     detrended: bool = configs.get("detrended", True)
+    users_to_remove: str = configs["users_to_remove"]
 
     physiological_data = load_processed_data(path=path_to_data, file_format=data_format)
 
     physiological_data = trim_to_shortest(signal_data=physiological_data)
+    # FIXME: divide the data with the labels!
+    
+    experiment_info = ExperimentInfo(path=path_to_experiment_info, mode=mode)
+    experiment_info.filter_correct_times(inplace=True)
+    # FIXME: boilerplate code copied from run_segmentation.py
+    if mode == 2:
+            physiological_data = filter_sleep_nights(
+                data=physiological_data, experiment_info=experiment_info.to_df()
+            )
+    
+    physiological_data["left"] = filter_user(
+        users_to_filter=users_to_remove, data=physiological_data["left"]
+    )
+    users_in_left_side = set(physiological_data["left"].keys())
+    physiological_data["right"] = filter_user(
+        users_to_filter=users_to_remove, data=physiological_data["right"]
+    )
+    users_in_right_side = set(physiological_data["right"].keys())
+    logger.debug(
+        f"Number of users with both left and right hand data: {len(users_in_left_side & users_in_right_side)}"
+    )
+    
+    physiological_data = separate_raw_signal_by_label(data=physiological_data, experiment_info=experiment_info)
+    
 
     dcca = perform_correlation(
         physiological_data=physiological_data,

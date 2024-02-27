@@ -1,5 +1,13 @@
-path_to_data: "./data.nosync/usilaughs/filtered_complete_cut/*/EDA/*.parquet"
+path_to_data: "./data.nosync/mwc2022/filtered_complete_cut/*/EDA/*.parquet"
 data_format: "parquet"
+path_to_experiment_info: "./data.nosync/mwc2022/all_experimento_info.csv"
+path_to_save_data: "./data.nosync/mwc2022/results/dcca.json" # the format has to be json
+
 time_scale: 20
-path_to_save_data: "./data.nosync/usilaughs/results/dcca.json" # the format has to be json
 detrended: True # if True, the method used will be the Detrended Time-Lagged Cross Correlation Coefficient. Otherwise, it will be a simple Time-Lagged Cross Correlation Coefficient.
+
+mode: 2 # 1 for usilaughs, 2 for mwc2022
+
+users_to_remove:
+  - "s092"
+  - "s089"
