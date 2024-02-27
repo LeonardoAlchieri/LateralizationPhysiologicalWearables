@@ -7,13 +7,13 @@ from warnings import warn
 
 from arch.unitroot import ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews
 from matplotlib.pyplot import figure, savefig, show, title
-from pandarallel import pandarallel
 from pandas import DataFrame, IndexSlice, Timestamp
 from seaborn import heatmap
 from tqdm.auto import tqdm
 
 path.append(".")
 from src.utils.io import load_config, load_processed_data
+from src.utils.pre_processing import trim_to_shortest
 
 basicConfig(filename="logs/run_stationarity_tests.log", level=DEBUG)
 
@@ -31,6 +31,7 @@ possible_methods: dict[str, Callable] = {
 def check_stationarity(
     physiological_data: dict[str, defaultdict[str, defaultdict[str, DataFrame]]],
     data_source: str,
+    signal_component: str,
     stationarity_method: Callable = KPSS,
     invert_pvalues: bool = False,
     nested: bool = False,
@@ -42,21 +43,33 @@ def check_stationarity(
 
     statistical_test = {
         side: {
-            user: (
-                physiological_data[side][user]
-                .iloc[:, [0]]
-                .groupby(axis=0, level=0)
-                .parallel_apply(lambda x: stationarity_method(x.values).pvalue)
-                .to_dict()
-                if not invert_pvalues
-                else physiological_data[side][user]
-                .iloc[:, [0]]
-                .groupby(axis=0, level=0)
-                .parallel_apply(lambda x: 1 - stationarity_method(x.values).pvalue)
-                .to_dict()
-            )
-            if physiological_data[side][user].iloc[:, 0].values.shape[0] > 0
-            else None
+            user: {
+                session_name: (
+                    stationarity_method(
+                        physiological_data[side][user][session_name]
+                        .loc[:, [signal_component]]
+                        .values
+                    ).pvalue
+                    if not invert_pvalues
+                    else 1
+                    - stationarity_method(
+                        physiological_data[side][user][session_name]
+                        .loc[:, signal_component]
+                        .values
+                    ).pvalue
+                )
+                if (
+                    physiological_data[side][user][session_name]
+                    .iloc[:, 0]
+                    .values.shape[0]
+                    > 0
+                )
+                else None
+                for session_name in list(
+                    set(physiological_data["right"][user].keys())
+                    & set(physiological_data["left"][user].keys())
+                )
+            }
             for user in tqdm(user_list, desc="User progress", colour="blue")
         }
         for side in ["left", "right"]
@@ -133,99 +146,6 @@ def correct_session_names(df: DataFrame):
     return df
 
 
-def trim_to_shortest(
-    signal_data: dict[str, defaultdict[str, defaultdict[str, DataFrame]]],
-) -> dict[str, defaultdict[str, defaultdict[str, DataFrame]]]:
-    """This method trims the physiological data to the shortest session length,
-    between data from the left and right side of the body. Necessary only for the
-    BiHeartS dataset, since for USILaughs the sessions match perfectly.
-
-    Parameters
-    ----------
-    signal_data : dict[str, defaultdict[str, defaultdict[str, DataFrame]]]
-        data to be trimmed
-
-    Returns
-    -------
-    dict[str, defaultdict[str, defaultdict[str, DataFrame]]]
-        same as input data for the format, but with each timeseries trimmed to the
-        shortest length of the two sides
-
-    Raises
-    ------
-    RuntimeError
-        _description_
-    RuntimeError
-        _description_
-    """
-    new_physiological_data = defaultdict(lambda: defaultdict(lambda: defaultdict()))
-
-    users_left = list(signal_data["left"].keys())
-    users_right = list(signal_data["right"].keys())
-    users = list(set(users_left) & set(users_right))
-    for user in tqdm(users, desc=f"Trimming. User progress"):
-        user_data_left: DataFrame = signal_data["left"][user]
-        user_data_right: DataFrame = signal_data["right"][user]
-        sessions_left = user_data_left.index.get_level_values("session").unique()
-        sessions_right = user_data_right.index.get_level_values("session").unique()
-        sessions = list(set(sessions_left) & set(sessions_right))
-        for session in sessions:
-            session_data_left = user_data_left.loc[IndexSlice[session, :], :].droplevel(
-                level=0, axis=0
-            )
-            session_data_right = user_data_right.loc[
-                IndexSlice[session, :], :
-            ].droplevel(level=0, axis=0)
-
-            max_start = max(
-                session_data_left.index.get_level_values("timestamp").min(),
-                session_data_right.index.get_level_values("timestamp").min(),
-            )
-            min_end = min(
-                session_data_left.index.get_level_values("timestamp").max(),
-                session_data_right.index.get_level_values("timestamp").max(),
-            )
-
-            session_data_left = session_data_left[
-                (session_data_left.index >= max_start)
-                & (session_data_left.index <= min_end)
-            ]
-            session_data_right = session_data_right[
-                (session_data_right.index >= max_start)
-                & (session_data_right.index <= min_end)
-            ]
-            if session_data_left.shape != session_data_right.shape:
-                longest_index = (
-                    session_data_left.index
-                    if session_data_left.shape[0] > session_data_right.shape[0]
-                    else session_data_right.index
-                )
-                shortest_index = (
-                    session_data_right.index
-                    if session_data_left.shape[0] > session_data_right.shape[0]
-                    else session_data_left.index
-                )
-                for el in longest_index:
-                    if el not in shortest_index:
-                        cutoff_index = el
-                        break
-                session_data_left = session_data_left[
-                    (session_data_left.index < cutoff_index)
-                ]
-                session_data_right = session_data_right[
-                    (session_data_right.index < cutoff_index)
-                ]
-                if session_data_left.shape != session_data_right.shape:
-                    raise RuntimeError("fuck")
-
-            if len(session_data_left) == 0:
-                raise RuntimeError("double fuck")
-            new_physiological_data["left"][user][session] = session_data_left
-            new_physiological_data["right"][user][session] = session_data_right
-
-    return new_physiological_data
-
-
 def main():
     path_to_config: str = "src/run/statistical_analysis/config_stationarity_tests.yml"
 
@@ -233,16 +153,17 @@ def main():
     configs: dict[str, Any] = load_config(path=path_to_config)
     logger.debug("Configs loaded")
 
-    n_workers: int = configs["n_workers"]
+    # n_workers: int = configs["n_workers"]
     dataset: str = configs["dataset"]
     path_to_data: str = configs["path_to_data"]
     data_format: str = configs["data_format"]
+    signal_component: str = configs["signal_component"]
     methods: list[str] | None = configs["methods"]
     path_to_save_data: str = configs["path_to_save_data"]
 
-    pandarallel.initialize(progress_bar=False, nb_workers=n_workers)
-
     physiological_data = load_processed_data(path=path_to_data, file_format=data_format)
+
+    physiological_data = trim_to_shortest(signal_data=physiological_data)
 
     if methods is None:
         warn(
@@ -253,10 +174,11 @@ def main():
         methods: list[Callable] = [possible_methods[method] for method in methods]
 
     test_result: dict[str, dict[str, dict[Any, Any | None]]] = dict()
-    for method in tqdm(methods, desc='Methods progress', colour='green'):
+    for method in tqdm(methods, desc="Methods progress", colour="green"):
         test_result[method.__name__] = check_stationarity(
             physiological_data=physiological_data,
             data_source=dataset,
+            signal_component=signal_component,
             invert_pvalues=False,
             nested=True,
             stationarity_method=method,
