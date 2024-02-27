@@ -142,7 +142,6 @@ def main():
     data_format: str = configs["data_format"]
     path_to_save_data: str = configs["path_to_save_data"]
     time_scale: int = configs["time_scale"]
-    detrended: bool = configs.get("detrended", True)
 
     physiological_data = load_processed_data(path=path_to_data, file_format=data_format)
 
@@ -151,7 +150,7 @@ def main():
     dcca = perform_correlation(
         physiological_data=physiological_data,
         time_scale=time_scale,
-        detrended=detrended,
+        detrended=True,
         max_time_lag=32 * 2,
         measure_name="max dcca",
         data_name="mwc2022",

@@ -2,7 +2,6 @@ from ast import literal_eval
 from json import load
 from sys import path
 from typing import Any
-from matplotlib import axis
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -196,7 +195,7 @@ def make_plot(
             )
         ax.set_title(component)
 
-    axs[0].set_ylim(ylim)
+    axs[0]
     axs[1].set_ylim(ylim)
     axs[2].set_ylim(ylim)
 
@@ -213,10 +212,7 @@ def make_plot(
         if i == 0:
             ax.set_ylabel(measure_name)
         else:
-            # ax.get_yaxis().set_visible(False)
-            ax.set_yticklabels([])
-            # ax.grid(axis="y")
-
+            ax.get_yaxis().set_visible(False)
 
         # set the x label to a 30º angle
         ax.set_xticklabels(

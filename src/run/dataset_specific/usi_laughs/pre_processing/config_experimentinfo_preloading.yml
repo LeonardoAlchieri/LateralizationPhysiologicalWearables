@@ -1,0 +1,4 @@
+# NOTE: all folder paths w/o the "/" at the end
+path_to_data: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
+path_to_save_folder: "./data.nosync/usilaughs/"
+save_format: 'csv'

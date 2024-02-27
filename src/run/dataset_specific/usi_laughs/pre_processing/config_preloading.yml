@@ -1,0 +1,5 @@
+path_to_main_folder: "/Users/leonardoalchieri/Datasets/USILaughs/participants"
+path_to_save_folder: "./"
+n_jobs: 10
+save_format: parquet
+plots: False
