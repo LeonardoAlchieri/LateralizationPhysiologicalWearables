@@ -619,10 +619,10 @@ def parallel_iteration(func):
 
 def filter_user(
     users_to_filter: list[str],
-    eda_data: defaultdict[str, defaultdict[str, Series | DataFrame]],
+    data: defaultdict[str, defaultdict[str, Series | DataFrame]],
 ) -> defaultdict[str, defaultdict[str, Series | DataFrame]]:
     return {
         user_name: user_data
-        for user_name, user_data in eda_data.items()
+        for user_name, user_data in data.items()
         if user_name not in users_to_filter
     }
