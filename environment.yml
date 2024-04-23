@@ -255,7 +255,7 @@ dependencies:
   - pip:
       - git+https://github.com/LeonardoAlchieri/cvxEDA.git
       - git+https://github.com/LeonardoAlchieri/EDArtifact.git@topic/pip-installable
-      - git+https://github.com/LeonardoAlchieri/effect-size.git
+      - effect-size-analysis==0.1.0
       - joblib-progress==1.0.3
       - lazypredict==0.2.12
       - markdown-it-py==3.0.0

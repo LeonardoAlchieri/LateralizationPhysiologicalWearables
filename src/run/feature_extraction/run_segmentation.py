@@ -43,11 +43,11 @@ def main():
         )
 
     eda_data["left"] = filter_user(
-        users_to_filter=users_to_remove, eda_data=eda_data["left"]
+        users_to_filter=users_to_remove, data=eda_data["left"]
     )
     users_in_left_side = set(eda_data["left"].keys())
     eda_data["right"] = filter_user(
-        users_to_filter=users_to_remove, eda_data=eda_data["right"]
+        users_to_filter=users_to_remove, data=eda_data["right"]
     )
     users_in_right_side = set(eda_data["right"].keys())
     logger.debug(
