@@ -4,6 +4,7 @@ from logging import DEBUG, INFO, basicConfig, getLogger
 from os import remove as remove_file
 from os.path import join as join_paths
 from pathlib import Path
+from joblib import Parallel, delayed
 
 # from joblib import Parallel, delayed
 from random import choice as choose_randomly
@@ -82,19 +83,21 @@ def gashis_artefact_detection_2(
     def intermediate_func(session_data: DataFrame | Series):
         try:
             data_w_artifacts = compute_eda_artifacts(
-            data=session_data,
-            show_database=True,
-            convert_dataframe=True,
-            output_path=None,
-            window_size=window_size,
-            return_vals=True,
-        )[1].set_index("Time", inplace=False)
+                data=session_data,
+                show_database=True,
+                convert_dataframe=True,
+                output_path=None,
+                window_size=window_size,
+                return_vals=True,
+            )[1].set_index("Time", inplace=False)
         except ValueError as e:
-            print(f'Error: {e}')
-            data_w_artifacts = DataFrame(session_data.values, index=session_data.index, columns=["EDA"])
-            data_w_artifacts['Artifact'] = 0
+            print(f"Error: {e}")
+            data_w_artifacts = DataFrame(
+                session_data.values, index=session_data.index, columns=["EDA"]
+            )
+            data_w_artifacts["Artifact"] = 0
         data_w_artifacts.attrs = session_data.attrs
-        only_artifacts = data_w_artifacts[data_w_artifacts['Artifact']]
+        only_artifacts = data_w_artifacts[data_w_artifacts["Artifact"]]
         return only_artifacts
 
     results = {
@@ -178,6 +181,7 @@ def main():
     device: str = configs["device"]
     concat_sessions: bool = configs["concat_sessions"]
     subset_data: bool = configs["subset_data"]
+    calculate_diff: bool = configs["calculate_diff"]
     artefact_detection: int = configs["artefact_detection"]
     artefact_window_size: int = configs.get("artefact_window_size", None)
 
@@ -401,12 +405,57 @@ def main():
         )
 
     if concat_sessions:
-        eda_data_standardized_phasic = concate_session_data(
-            eda_data_standardized_phasic
+        # eda_data_standardized_phasic = concate_session_data(
+        #     eda_data_standardized_phasic
+        # )
+        # eda_data_standardized_tonic = concate_session_data(eda_data_standardized_tonic)
+        # eda_data_standardized = concate_session_data(eda_data_standardized)
+        concat_result = Parallel(n_jobs=n_jobs)(
+            delayed(concate_session_data)(data)
+            for data in [
+                eda_data_standardized,
+                eda_data_standardized_phasic,
+                eda_data_standardized_tonic,
+            ]
         )
-        eda_data_standardized_tonic = concate_session_data(eda_data_standardized_tonic)
+        (
+            eda_data_standardized,
+            eda_data_standardized_phasic,
+            eda_data_standardized_tonic,
+        ) = concat_result
 
-        eda_data_standardized = concate_session_data(eda_data_standardized)
+        if calculate_diff:
+            users_in_common = set(eda_data_standardized["right"].keys()).intersection(
+                set(eda_data_standardized["left"].keys())
+            )
+            # NOTE: I have inserted the dropna since you get a NaN if the index does not match in some cases
+            eda_data_standardized["diff"] = {
+                user: (
+                    (
+                        eda_data_standardized["right"][user]
+                        - eda_data_standardized["left"][user]
+                    ).dropna()
+                )
+                for user in tqdm(users_in_common, desc="Calculating diff")
+            }
+            eda_data_standardized_phasic["diff"] = {
+                user: (
+                    (
+                        eda_data_standardized_phasic["right"][user]
+                        - eda_data_standardized_phasic["left"][user]
+                    ).dropna()
+                )
+                for user in tqdm(users_in_common, desc="Calculating diff")
+            }
+            eda_data_standardized_tonic["diff"] = {
+                user: (
+                    (
+                        eda_data_standardized_tonic["right"][user]
+                        - eda_data_standardized_tonic["left"][user]
+                    ).dropna()
+                )
+                for user in tqdm(users_in_common, desc="Calculating diff")
+            }
 
         # TODO: the code should be able to handle even when there is no session concatenation
         for side in eda_data_standardized.keys():
@@ -415,7 +464,7 @@ def main():
                     eda_data_standardized[side].keys(),
                     desc=f'Saving EDA data for side "{side}"',
                 ):
-                    if user in eda_data_phasic[side].keys():
+                    if user in eda_data_standardized_phasic[side].keys():
                         user_data_standardized: Series = eda_data_standardized[side][
                             user
                         ]
@@ -480,12 +529,16 @@ def main():
                         )
                     else:
                         raise RuntimeError(
-                            f"User {user} not found in eda_data_phasic for side {side}: {eda_data_phasic[side].keys()}"
+                            f"User {user} not found in eda_data_standardized_phasic for side {side}: {eda_data_standardized_phasic[side].keys()}"
                         )
             else:
                 raise RuntimeError(
-                    f"Side {side} not found in eda_data_phasic keys: {eda_data_phasic.keys()}"
+                    f"Side {side} not found in eda_data_standardized_phasic keys: {eda_data_standardized_phasic.keys()}"
                 )
+    else:
+        raise NotImplementedError(
+            "I have not implemented yet what to do if you do not want to concatenate the sessions."
+        )
 
 
 if __name__ == "__main__":
