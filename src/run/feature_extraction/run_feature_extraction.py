@@ -23,30 +23,41 @@ def main():
     configs: dict[str, Any] = load_config(path=path_to_config)
     n_jobs: int = configs["n_jobs"]
     logger.debug("Configs loaded")
-    
+
     artifacts: bool = configs["artifacts"]
     path_to_segmented_data: str = configs["path_to_segmented_data"]
     path_to_save_file: str = configs["path_to_save_file"]
-    
+    bilateral_fusion: bool = configs["bilateral_fusion"]
+
     segmented_data: dict[str, Any] = load(path_to_segmented_data)
-        
+
     values_left: ndarray[float] = segmented_data["values_left"]
     values_right: ndarray[float] = segmented_data["values_right"]
     labels_left: ndarray[int] = segmented_data["labels_left"]
     labels_right: ndarray[int] = segmented_data["labels_right"]
     groups_left: ndarray[str] = segmented_data["groups_left"]
     groups_right: ndarray[str] = segmented_data["groups_right"]
-    
-    logger.info('Starting feature extraction')
+
+    logger.info("Starting feature extraction")
     features_left = Parallel(n_jobs=n_jobs)(
-    delayed(get_eda_features)(value) for value in (values_left)
-)
-    logger.info('Extracted for left side data')
+        delayed(get_eda_features)(value) for value in (values_left)
+    )
+    logger.info("Extracted for left side data")
     features_right = Parallel(n_jobs=n_jobs)(
         delayed(get_eda_features)(value) for value in (values_right)
     )
-    logger.info('Extracted for right side data')
-    logger.info('Complete feature extraction. Reorganizing the data before saving.')
+    logger.info("Extracted for right side data")
+
+    if bilateral_fusion:
+        logger.info("Bilateral fusion flag on. Calculating on diff side data as well.")
+        values_diff: ndarray[float] = segmented_data["values_diff"]
+        labels_diff: ndarray[int] = segmented_data["labels_diff"]
+        groups_diff: ndarray[str] = segmented_data["groups_diff"]
+        features_diff = Parallel(n_jobs=n_jobs)(
+            delayed(get_eda_features)(value) for value in (values_diff)
+        )
+        logger.info("Extracted for diff side data")
+    logger.info("Complete feature extraction. Reorganizing the data before saving.")
 
     features_left: ndarray = stack(features_left)
     features_right: ndarray = stack(features_right)
@@ -56,12 +67,12 @@ def main():
 
     groups_left: ndarray = stack(groups_left)
     groups_right: ndarray = stack(groups_right)
-    
+
     if artifacts:
         logger.info("Loading artifacts data as well")
         artefacts_left = segmented_data["artefacts_left"]
         artefacts_right = segmented_data["artefacts_right"]
-        
+
         artefacts_left: ndarray = stack(artefacts_left)
         artefacts_right: ndarray = stack(artefacts_right)
 
@@ -75,20 +86,37 @@ def main():
             groups_left=groups_left,
             groups_right=groups_right,
             artefacts_left=artefacts_left,
-            artefacts_right=artefacts_right)
+            artefacts_right=artefacts_right,
+        )
     else:
         logger.info("Saving the data")
-        savez(
-            file=path_to_save_file,
-            features_left=features_left,
-            features_right=features_right,
-            labels_left=labels_left,
-            labels_right=labels_right,
-            groups_left=groups_left,
-            groups_right=groups_right)
+        if bilateral_fusion:
+            features_diff: ndarray = stack(features_diff)
+            labels_diff: ndarray = stack(labels_diff)
+            groups_diff: ndarray = stack(groups_diff)
+            savez(
+                file=path_to_save_file,
+                features_left=features_left,
+                features_right=features_right,
+                features_diff=features_diff,
+                labels_left=labels_left,
+                labels_right=labels_right,
+                labels_diff=labels_diff,
+                groups_left=groups_left,
+                groups_right=groups_right,
+                groups_diff=groups_diff,
+            )
+        else:
+            savez(
+                file=path_to_save_file,
+                features_left=features_left,
+                features_right=features_right,
+                labels_left=labels_left,
+                labels_right=labels_right,
+                groups_left=groups_left,
+                groups_right=groups_right,
+            )
     logger.info("Data saved successfully")
-        
-        
 
 
 if __name__ == "__main__":
