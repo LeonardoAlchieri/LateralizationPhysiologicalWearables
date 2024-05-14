@@ -1,10 +1,10 @@
-path_to_experiment_info: "./data.nosync/usilaughs/all_experimento_info.csv"
-eda_data_base_path: "./data.nosync/usilaughs/filtered_complete_cut/*/EDA/*.parquet"
+path_to_experiment_info: "./data.nosync/mwc2022/all_experimento_info.csv"
+eda_data_base_path: "./data.nosync/mwc2022/filtered_standardized_bilateral/*/EDA/*.parquet"
 eda_data_format: "parquet"
-path_to_save_file: "./data.nosync/usilaughs/segmented/EDA_segmented_noart-3.npz"
+path_to_save_file: "./data.nosync/mwc2022/segmented/EDA_segmented_noart_bilateral_fusion.npz"
 
-mode: 1 # 1 for usilaughs, 2 for mwc2022
-segment_size_in_secs: 4 # default should be 4 for usilaughs and 600 for mwc2022
+mode: 2 # 1 for usilaughs, 2 for mwc2022
+segment_size_in_secs: 600 # default should be 4 for usilaughs and 600 for mwc2022
 eda_sample_rate: 4
 artifacts: False
 
@@ -13,6 +13,9 @@ components:
   - "phasic-EDA"
   - "tonic-EDA"
 
+# These users are for usilaughs. For MWC2022 there is no user to remove, but these will get ignored
 users_to_remove:
   - "s092"
   - "s089"
+
+bileteral_fusion: True # Added for bilateral fusion. To use only if your data also has the "diff" side

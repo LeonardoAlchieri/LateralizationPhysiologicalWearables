@@ -33,6 +33,7 @@ def main():
     artifacts: bool = configs["artifacts"]
     components: list[str] = configs["components"]
     users_to_remove: list[str] = configs["users_to_remove"]
+    bileteral_fusion: bool = configs["bileteral_fusion"]
 
     experiment_info = ExperimentInfo(path=path_to_experiment_info, mode=mode)
     experiment_info.filter_correct_times(inplace=True)
@@ -42,48 +43,86 @@ def main():
             data=eda_data, experiment_info=experiment_info.to_df()
         )
 
-    eda_data["left"] = filter_user(
-        users_to_filter=users_to_remove, data=eda_data["left"]
+    users_in_common: set | None = None
+    for side in eda_data.keys():
+        eda_data[side] = filter_user(
+        users_to_filter=users_to_remove, data=eda_data[side]
     )
-    users_in_left_side = set(eda_data["left"].keys())
-    eda_data["right"] = filter_user(
-        users_to_filter=users_to_remove, data=eda_data["right"]
-    )
-    users_in_right_side = set(eda_data["right"].keys())
+        if users_in_common is None:
+            users_in_common = set(eda_data[side].keys())
+        else:
+            users_in_common = set(eda_data[side].keys()).intersection(users_in_common)
+            
     logger.debug(
-        f"Number of users with both left and right hand data: {len(users_in_left_side & users_in_right_side)}"
+        f"Number of users with both left and right hand data: {len(users_in_common)}"
     )
 
     segment_size_in_sampling_rate: int = segment_size_in_secs * eda_sample_rate
 
     if not artifacts:
-        (
-            values_left,
-            values_right,
-            labels_left,
-            labels_right,
-            groups_left,
-            groups_right,
-        ) = segment(
-            data=eda_data,
-            experiment_info_as_dict=experiment_info.to_dict(),
-            segment_size_in_sampling_rate=segment_size_in_sampling_rate,
-            segment_size_in_secs=segment_size_in_secs,
-            data_sample_rate=eda_sample_rate,
-            mode=experiment_info.get_mode(),
-            components=components,
-        )
-        logger.info("Saving data")
-        savez(
-            file=path_to_save_file,
-            values_left=values_left,
-            values_right=values_right,
-            labels_left=labels_left,
-            labels_right=labels_right,
-            groups_left=groups_left,
-            groups_right=groups_right,
-        )
-        logger.info("Data saved successfully")
+        if not bileteral_fusion:
+            (
+                values_left,
+                values_right,
+                labels_left,
+                labels_right,
+                groups_left,
+                groups_right,
+            ) = segment(
+                data=eda_data,
+                experiment_info_as_dict=experiment_info.to_dict(),
+                segment_size_in_sampling_rate=segment_size_in_sampling_rate,
+                segment_size_in_secs=segment_size_in_secs,
+                data_sample_rate=eda_sample_rate,
+                mode=experiment_info.get_mode(),
+                components=components,
+            )
+            logger.info("Saving data")
+            savez(
+                file=path_to_save_file,
+                values_left=values_left,
+                values_right=values_right,
+                labels_left=labels_left,
+                labels_right=labels_right,
+                groups_left=groups_left,
+                groups_right=groups_right,
+            )
+            logger.info("Data saved successfully")
+        else:
+            (
+                values_left,
+                values_right,
+                values_diff,
+                labels_left,
+                labels_right,
+                labels_diff,
+                groups_left,
+                groups_right,
+                groups_diff,
+            ) = segment(
+                data=eda_data,
+                experiment_info_as_dict=experiment_info.to_dict(),
+                segment_size_in_sampling_rate=segment_size_in_sampling_rate,
+                segment_size_in_secs=segment_size_in_secs,
+                data_sample_rate=eda_sample_rate,
+                mode=experiment_info.get_mode(),
+                components=components,
+                bilateral=True,
+            )
+            logger.info("Saving data")
+            savez(
+                file=path_to_save_file,
+                values_left=values_left,
+                values_right=values_right,
+                values_diff=values_diff,
+                labels_left=labels_left,
+                labels_right=labels_right,
+                labels_diff=labels_diff,
+                groups_left=groups_left,
+                groups_right=groups_right,
+                groups_diff=groups_diff,
+            )
+            logger.info("Data saved successfully")
     else:
         values_left: list[ndarray]
         values_right: list[ndarray]
