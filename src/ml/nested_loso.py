@@ -671,3 +671,192 @@ def run_opposite_side_prediction(
         ),
         all_results,
     )
+
+def compute_loso_opposite_side_updated(
+    features_train: ndarray,
+    labels_train: ndarray,
+    groups_train: ndarray,
+    features_test: ndarray,
+    labels_test: ndarray,
+    groups_test: ndarray,
+    random_state_undersampling: int,
+    random_state_classifier: int,
+    random_state_fold: int,
+    n_inner_folds: int,
+    resampling_method: Callable,
+    **kwargs,
+) -> tuple[DataFrame, list[list[DataFrame]]]:
+    """
+    Run multiple iterations of different classifiers on the resampled training and testing data,
+    and return a DataFrame with the average accuracy and standard error of the different models.
+
+    Parameters
+    ----------
+    x_train : ndarray
+        The features of the training data.
+    x_test : ndarray
+        The features of the testing data.
+    y_train : ndarray
+        The target labels of the training data.
+    y_test : ndarray
+        The target labels of the testing data.
+    folds_train : int
+        The number of folds to generate for the training data.
+    folds_test : int
+        The number of folds to generate for the testing data.
+    n_jobs : int
+        The number of CPU cores to use for parallel processing.
+
+    Returns
+    -------
+    DataFrame
+        A DataFrame containing the average accuracy and standard error of the different models.
+    """
+
+    all_models = LOSO_opposite_side(
+            users_train=groups_train,
+            users_test=groups_test,
+            features_train=features_train,
+            labels_train=labels_train,
+            features_test=features_test,
+            labels_test=labels_test,
+            random_state_classifier=random_state_classifier,
+            random_state_undersampling=random_state_undersampling,
+            random_state_fold=random_state_fold,
+            n_inner_folds=n_inner_folds,
+            resampling_method=resampling_method,
+        )
+
+    averages = (
+        concat(all_models)
+        .groupby(level=0)
+        .mean()
+        .sort_values(by="Balanced Accuracy", ascending=False)
+    )
+    standard_deviations = (
+        concat(all_models)
+        .groupby(level=0)
+        .std()
+        .sort_values(by="Balanced Accuracy", ascending=False)
+    )
+    standard_errors = standard_deviations / (len(all_models) ** 0.5)
+
+    return all_models, concat(
+        [averages, standard_errors],
+        axis=1,
+        keys=["Average", "Standard error"],
+    )
+    
+def run_opposite_side_prediction_updated(
+    features_train: ndarray,
+    labels_train: ndarray,
+    groups_train: ndarray,
+    features_test: ndarray,
+    labels_test: ndarray,
+    groups_test: ndarray,
+    generator_seeds: tuple[int, int] = [42, 69, 666],
+    n_seeds_to_test_classifiers: int = 10,
+    n_seeds_to_undersample: int = 10,
+    n_seeds_to_test_folds: int = 10,
+    n_inner_folds: int = 5,
+    **kwargs,
+) -> tuple[DataFrame, list[list[DataFrame]]]:
+    """
+    Run multiple iterations of different classifiers on the resampled training and testing data,
+    and return a DataFrame with the average accuracy and standard error of the different models.
+
+    Parameters
+    ----------
+    x_train : ndarray
+        The features of the training data.
+    x_test : ndarray
+        The features of the testing data.
+    y_train : ndarray
+        The target labels of the training data.
+    y_test : ndarray
+        The target labels of the testing data.
+    folds_train : int
+        The number of folds to generate for the training data.
+    folds_test : int
+        The number of folds to generate for the testing data.
+    n_jobs : int
+        The number of CPU cores to use for parallel processing.
+
+    Returns
+    -------
+    DataFrame
+        A DataFrame containing the average accuracy and standard error of the different models.
+    """
+    # NOTE: we still set a single seed, from which we generate a bunch of other
+    # random seeds to be fed to the algorithm
+    set_numpy_seed(generator_seeds[0])
+    random_states_classifiers = randint(
+        0, int(2**32 - 1), n_seeds_to_test_classifiers
+    )
+
+    # NOTE: to avoid dependencies between the seeds for the classifiers and those
+    # for the cross validation, two "main" seeds are required, from which then
+    # generate all of the others. This also allows reproducibility of the code.
+    set_numpy_seed(generator_seeds[1])
+    random_states_folds = randint(0, int(2**32 - 1), n_seeds_to_test_folds)
+
+    set_numpy_seed(generator_seeds[2])
+    random_states_undersampling = randint(0, int(2**32 - 1), n_seeds_to_undersample)
+
+    results: list[DataFrame]
+    all_results: list[list[DataFrame]]
+
+    possible_combinations = list(
+        product(
+            random_states_folds, random_states_undersampling, random_states_classifiers
+        )
+    )
+    with joblib_progress(
+        "Random seed iterations", total=len(list(possible_combinations))
+    ):
+        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
+            n_jobs=kwargs.get("n_jobs", 1),
+        )(
+            delayed(compute_loso_opposite_side_updated)(
+                features_train=features_train,
+                labels_train=labels_train,
+                groups_train=groups_train,
+                features_test=features_test,
+                labels_test=labels_test,
+                groups_test=groups_test,
+                random_state_undersampling=random_state_undersampling,
+                random_state_classifier=random_state_classifier,
+                random_state_fold=random_state_fold,
+                n_inner_folds=n_inner_folds,
+                resampling_method=kwargs.get("resampling_method", None),
+            )
+            for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
+        )
+
+    results = [outer_fold[1] for outer_fold in outer_folds_output]
+    all_results = [outer_fold[0] for outer_fold in outer_folds_output]
+
+    averages_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
+        .droplevel(axis=1, level=0)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
+    )
+
+    errors_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(
+            lambda x: (x.loc[:, IndexSlice["Standard error", :]] ** 2).sum() ** 0.5
+            / (n_seeds_to_test_classifiers * n_seeds_to_undersample)
+        )
+        .droplevel(axis=1, level=0)
+        .sort_values(by="Balanced Accuracy", ascending=False)
+    )
+    return (
+        pd.concat(
+            [averages_seeds, errors_seeds], axis=1, keys=["Average", "Standard error"]
+        ),
+        all_results,
+    )
