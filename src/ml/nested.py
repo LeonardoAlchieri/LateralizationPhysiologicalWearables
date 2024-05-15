@@ -649,3 +649,138 @@ def run_opposite_side_prediction_hyper(
         ),
         all_results,
     )
+    
+def compute_outer_folds_opposite_side_updated(
+    features_train: ndarray,
+    labels_train: ndarray,
+    groups_train: ndarray,
+    features_test: ndarray,
+    labels_test: ndarray,
+    groups_test: ndarray,
+    random_state_undersampling: int,
+    random_state_classifier: int,
+    random_state_fold: int,
+    n_inner_folds: int,
+    **kwargs,
+) -> tuple[list[DataFrame], list[list[DataFrame]]]:
+    x_resampled_train, y_resampled_train, _ = local_resampling(
+        features_train,
+        labels_train,
+        groups_train,
+        seed=random_state_undersampling,
+    )
+
+    
+    models = fit_with_hyperparameters(
+            x_train=x_resampled_train,
+            y_train=y_resampled_train,
+            x_test=features_test.reshape((features_test.shape[0], -1)),
+            y_test=labels_test.reshape((labels_test.shape[0], -1)),
+            random_state_classifier=random_state_classifier,
+            random_state_fold=random_state_fold,
+            n_inner_folds=n_inner_folds,
+            max_resources=kwargs.get("max_resources", "auto"),
+            timeout=kwargs.get("timeout", None),
+            n_candidates=kwargs.get("n_candidates", "exhaust"),
+        )
+
+    return [models], pd.concat(
+        [models],
+        axis=1,
+        keys=["Average"],
+    )
+
+def run_opposite_side_prediction_hyper_updated(
+    features_train: ndarray,
+    labels_train: ndarray,
+    groups_train: ndarray,
+    features_test: ndarray,
+    labels_test: ndarray,
+    groups_test: ndarray,
+    generator_seeds: tuple[int, int, int] = (42, 666, 69),
+    n_seeds_to_test_folds: int = 10,
+    n_seeds_to_test_classifiers: int = 10,
+    n_seeds_to_undersample: int = 10,
+    n_inner_folds: int = 3,
+    **kwargs,
+):
+    set_numpy_seed(generator_seeds[0])
+    random_states_classifiers = randint(
+        0, 10000, n_seeds_to_test_classifiers
+    )
+
+    # NOTE: to avoid dependencies between the seeds for the classifiers and those
+    # for the cross validation, two "main" seeds are required, from which then
+    # generate all of the others. This also allows reproducibility of the code.
+    set_numpy_seed(generator_seeds[1])
+    random_states_undersampling = randint(0, 10000, n_seeds_to_undersample)
+
+    set_numpy_seed(generator_seeds[2])
+    random_states_folds = randint(0, 10000, n_seeds_to_test_folds)
+
+    # results = []
+    # all_results: list[list[DataFrame]] = []
+    possible_combinations = list(
+        product(
+            random_states_folds, random_states_undersampling, random_states_classifiers
+        )
+    )
+
+    with joblib_progress(
+        "Random seed iterations", total=len(list(possible_combinations))
+    ):
+        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
+            n_jobs=kwargs.get("n_jobs", 1), backend="loky"
+        )(
+            delayed(compute_outer_folds_opposite_side_updated)(
+                features_train=features_train,
+                labels_train=labels_train,
+                groups_train=groups_train,
+                features_test=features_test,
+                labels_test=labels_test,
+                groups_test=groups_test,
+                random_state_undersampling=random_state_undersampling,
+                random_state_classifier=random_state_classifier,
+                random_state_fold=random_state_fold,
+                n_inner_folds=n_inner_folds,
+                max_resources=kwargs.get("max_resources", "auto"),
+                timeout=kwargs.get("timeout", None),
+                n_candidates=kwargs.get("n_candidates", "exhaust"),
+            )
+            for random_state_fold, random_state_undersampling, random_state_classifier in possible_combinations
+        )
+        results = [outer_fold[1] for outer_fold in outer_folds_output]
+        all_results = [outer_fold[0] for outer_fold in outer_folds_output]
+
+    averages_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(lambda x: x.loc[:, IndexSlice["Average", :]].mean())
+        .droplevel(axis=1, level=0)
+        .sort_values(by=("Balanced Accuracy"), ascending=False)
+    )
+
+    errors_seeds = (
+        pd.concat(results)
+        .groupby(level=0)
+        .apply(
+            lambda x: x.loc[:, IndexSlice["Average", :]].sem()
+            # lambda x: x.loc[:, IndexSlice["Average", :]].std()
+            # / (
+            #     (
+            #         n_seeds_to_test_classifiers
+            #         * n_seeds_to_undersample
+            #         * n_seeds_to_test_folds
+            #     )
+            #     ** 0.5
+            # )
+        )
+        .droplevel(axis=1, level=0)
+        .sort_values(by="Balanced Accuracy", ascending=False)
+    )
+    return (
+        pd.concat(
+            [averages_seeds, errors_seeds], axis=1, keys=["Average", "Standard error"]
+        ),
+        all_results,
+    )

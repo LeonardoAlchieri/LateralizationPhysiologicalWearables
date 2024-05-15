@@ -37,14 +37,14 @@ def resampling(
     if df is not None:
         x = df.drop(columns=["label"], inplace=False).values
         if len(df["label"].unique()) == 1:
-            warn(
-                f"Only one class in the dataset. Removing current user {df.name}",
-                RuntimeWarning,
-            )
-            print(
-                f"Only one class in the dataset. Removing current user {df.name}",
-                RuntimeWarning,
-            )
+            # warn(
+            #     f"Only one class in the dataset. Removing current user {df.name}",
+            #     RuntimeWarning,
+            # )
+            # print(
+            #     f"Only one class in the dataset. Removing current user {df.name}",
+            #     RuntimeWarning,
+            # )
             return None
         y = df["label"].values
     else:
@@ -54,14 +54,14 @@ def resampling(
             )
         else:
             if len(set(labels)) == 1:
-                warn(
-                    f"Only one class in the dataset. Removing current user {df.name}",
-                    RuntimeWarning,
-                )
-                print(
-                    f"Only one class in the dataset. Removing current user {df.name}",
-                    RuntimeWarning,
-                )
+                # warn(
+                #     f"Only one class in the dataset. Removing current user {df.name}",
+                #     RuntimeWarning,
+                # )
+                # print(
+                #     f"Only one class in the dataset. Removing current user {df.name}",
+                #     RuntimeWarning,
+                # )
                 return None
         
     cc = resampling_method(random_state=random_state)
