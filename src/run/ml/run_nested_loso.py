@@ -222,28 +222,28 @@ def main():
         }
 
     averaged_results_cv, all_results_cv = dict(), dict()
-    # for side, side_data in (
-    #     pbar := tqdm(
-    #         complete_data.items(),
-    #         position=2,
-    #         leave=True,
-    #     )
-    # ):
-    #     pbar.set_description(f"Same side progress (current {side})")
-    #     (
-    #         averaged_results_cv[side],
-    #         all_results_cv[side],
-    #     ) = run_same_side_classifications(
-    #         x=side_data["features"],
-    #         y=side_data["labels"],
-    #         folds=side_data["groups"],
-    #         generator_seeds=generator_seeds,
-    #         n_seeds_to_test_folds=n_seeds_to_test_folds,
-    #         n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
-    #         n_seeds_to_undersample=n_seeds_to_undersample,
-    #         n_inner_folds=n_folds_inner,
-    #         n_jobs=n_jobs,
-    #     )
+    for side, side_data in (
+        pbar := tqdm(
+            complete_data.items(),
+            position=2,
+            leave=True,
+        )
+    ):
+        pbar.set_description(f"Same side progress (current {side})")
+        (
+            averaged_results_cv[side],
+            all_results_cv[side],
+        ) = run_same_side_classifications(
+            x=side_data["features"],
+            y=side_data["labels"],
+            folds=side_data["groups"],
+            generator_seeds=generator_seeds,
+            n_seeds_to_test_folds=n_seeds_to_test_folds,
+            n_seeds_to_test_classifiers=n_seeds_to_test_classifiers,
+            n_seeds_to_undersample=n_seeds_to_undersample,
+            n_inner_folds=n_folds_inner,
+            n_jobs=n_jobs,
+        )
 
     opposite_sides: list[str] = list(combinations(list(complete_data.keys()), r=2))
     # NOTE: we removed when combinations are on the test side, while the train is given by a single
