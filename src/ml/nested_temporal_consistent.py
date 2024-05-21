@@ -471,7 +471,7 @@ def run_nested_cross_validation_prediction(
                 max_resources=kwargs.get("max_resources", "auto"),
                 timeout=kwargs.get("timeout", None),
                 n_candidates=kwargs.get("n_candidates", "exhaust"),
-                **kwargs,
+                percent_left_out=kwargs.get("percent_left_out", 1/3),
             )
             for i, (
                 random_state_fold,
