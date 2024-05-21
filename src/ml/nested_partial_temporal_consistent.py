@@ -275,7 +275,7 @@ def run_hyper_fold(
     return models
 
 def get_train_test_folds(groups, fold_size): 
-    test_group = choice(groups, fold_size)
+    test_group = choice(groups, fold_size, )
     train_group = [group for group in groups if group not in test_group]
     return train_group, test_group
         
@@ -366,6 +366,7 @@ def compute_outer_folds_same_side(
     # NOTE: the fold generation should be fixed, to limit the accuracy
     # be due exclusively to starting confitions in the algorithm
 
+    set_numpy_seed(random_state_fold)
     folds = prepare_temporal_consistent_idxs(
         x=x_full, y=y_full, groups=groups, n_folds=n_outer_folds
     )
