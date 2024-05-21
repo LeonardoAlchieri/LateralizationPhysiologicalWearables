@@ -1,0 +1,25 @@
+path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_bilateral_fusion.npz"
+path_to_save_data_avgs: "./data.nosync/usilaughs/results/nested_temporal_consistency_avg_bilateral.h5"
+path_to_save_data_all: "./data.nosync/usilaughs/results/nested_temporal_consistency_all_bilateral.h5"
+generator_seeds:
+  - 42 
+  - 69
+  - 420
+n_seeds_to_test_classifiers: 5
+n_seeds_to_test_folds: 5
+n_seeds_to_undersample: 5
+n_folds_outer: 5
+n_folds_inner: 5
+
+n_jobs: 8
+timeout: # seconds
+max_resources: 'auto' # max iterations permitted in each hyperparameter search. If empty, it will be set to "auto"
+n_candidates: 'exhaust' # TODO: specify what this does
+debug_mode: False
+
+subset_of_features: 100 # select percentage of features to select. Values > 100 will select all features
+path_to_feature_importance_list_left: "./data.nosync/usilaughs/feature_importance/importance_xgboost_left.csv"
+path_to_feature_importance_list_right: "./data.nosync/usilaughs/feature_importance/importance_xgboost_right.csv"
+# The two paths to feature importance will get ignored if subset_of_features > 100
+
+bilateral_fusion: True
