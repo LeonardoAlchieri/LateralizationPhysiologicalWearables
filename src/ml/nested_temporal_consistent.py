@@ -351,7 +351,7 @@ def compute_outer_folds_same_side(
     # be due exclusively to starting confitions in the algorithm
 
     train_index, test_index = prepare_temporal_consistent_idxs(
-        x=x_full, y=y_full, groups=groups
+        x=x_full, y=y_full, groups=groups, test_percentage=kwargs['percent_left_out']
     )
 
     custom_method: Callable | None = kwargs.get("custom_fold_run_method", None)
@@ -471,6 +471,7 @@ def run_nested_cross_validation_prediction(
                 max_resources=kwargs.get("max_resources", "auto"),
                 timeout=kwargs.get("timeout", None),
                 n_candidates=kwargs.get("n_candidates", "exhaust"),
+                kwargs=kwargs,
             )
             for i, (
                 random_state_fold,

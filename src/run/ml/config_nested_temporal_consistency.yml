@@ -1,6 +1,6 @@
 path_to_features_data: "./data.nosync/usilaughs/features/EDA_features_noart_bilateral_fusion.npz"
-path_to_save_data_avgs: "./data.nosync/usilaughs/results/nested_temporal_consistency_avg_bilateral.h5"
-path_to_save_data_all: "./data.nosync/usilaughs/results/nested_temporal_consistency_all_bilateral.h5"
+path_to_save_data_avgs: "./data.nosync/usilaughs/results/nested_temporal_consistency_avg_bilateral_DEBUG.h5"
+path_to_save_data_all: "./data.nosync/usilaughs/results/nested_temporal_consistency_all_bilateral_DEBUG.h5"
 generator_seeds:
   - 42 
   - 69
@@ -11,7 +11,7 @@ n_seeds_to_undersample: 5
 n_folds_outer: 5
 n_folds_inner: 5
 
-n_jobs: 8
+n_jobs: 125
 timeout: # seconds
 max_resources: 'auto' # max iterations permitted in each hyperparameter search. If empty, it will be set to "auto"
 n_candidates: 'exhaust' # TODO: specify what this does
@@ -23,3 +23,5 @@ path_to_feature_importance_list_right: "./data.nosync/usilaughs/feature_importan
 # The two paths to feature importance will get ignored if subset_of_features > 100
 
 bilateral_fusion: True
+
+percent_left_out: 0.2 # percentage of data to leave out for testing

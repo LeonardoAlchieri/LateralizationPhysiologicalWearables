@@ -57,6 +57,7 @@ def main():
     n_candidates: int | Literal["exhaust"] = configs["n_candidates"]
     debug_mode: bool = configs["debug_mode"]
     bilateral_fusion: bool = configs["bilateral_fusion"]
+    percent_left_out: float = configs["percent_left_out"]
 
     subset_of_features: int = configs["subset_of_features"]
     path_to_feature_importance_list_left: str = configs[
@@ -262,6 +263,7 @@ def main():
             timeout=timeout,
             max_resources=max_resources,
             n_candidate=n_candidates,
+            percent_left_out=percent_left_out,
             # NOTE: I think these two variables are never actually used.
             # important_features_left=important_features_left,
             # important_features_right=important_features_right,
