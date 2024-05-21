@@ -319,7 +319,7 @@ def main():
     #         # important_features_right=important_features_right,
     #     )
 
-    # Create an HDF5 file
+        # Create an HDF5 file
     with HDFStore(path_to_save_data_avgs) as store:
         # Save each DataFrame in the dictionary to the HDF5 file
         for key, value in averaged_results_cv.items():
@@ -330,7 +330,8 @@ def main():
         # Save each DataFrame in the dictionary to the HDF5 file
         for key, value in all_results_cv.items():
             for i, el in enumerate(value):
-                store.put(f"{key}_{i}", el)
+                for j, el2 in enumerate(el):
+                    store.put(f"{key}_{i}_{j}", el2)
 
 
 if __name__ == "__main__":
