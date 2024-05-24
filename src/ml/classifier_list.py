@@ -80,6 +80,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "degree": [2, 3, 4, 5],
         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
         "shrinking": [True, False],
+        "max_iter": [100000],
     },
     NuSVC: {
         "nu": [0.1, 0.3, 0.5, 0.7],
@@ -88,7 +89,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "gamma": ["scale", "auto"] + [0.1, 1.0, 10.0],
         "shrinking": [True, False],
         # sometimes, it hangs and does not converge
-        "max_iter": [1000000],
+        "max_iter": [100000],
     },
     LinearSVC: {
         "C": [0.1, 1.0, 10.0, 100.0, 1000.0],
@@ -96,6 +97,7 @@ CLASSIFIERS_HYPERPARAMETER_LIST: dict[ClassifierMixin, dict[str, Any]] = {
         "penalty": [ "l2"],
         "dual": ['auto'],
         "multi_class": ["ovr", "crammer_singer"],
+        "max_iter": [100000],
     },
     KNeighborsClassifier: {
         "n_neighbors": [3, 5, 7, 9, 11],
