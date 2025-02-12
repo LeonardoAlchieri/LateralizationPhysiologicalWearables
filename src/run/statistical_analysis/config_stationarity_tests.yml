@@ -1,7 +1,9 @@
 n_workers: 6
-dataset: "usilaughs" #accepted values are "usilaughs" or "mwc2022"
-path_to_data: "./data.nosync/usilaughs/filtered_complete_cut/*/EDA/*.parquet"
+dataset: "mwc2022" #accepted values are "usilaughs" or "mwc2022"
+path_to_data: "./data.nosync/mwc2022/filtered_standardized_bilateral/*/EDA/*.parquet"
 data_format: "parquet"
 signal_component: "mixed-EDA"
-methods: # choose among one or more of the following -> [ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews]
-path_to_save_data: "./data.nosync/usilaughs/results/stationarity_checks.json" # the format has to be json
+methods:  # choose among one or more of the following -> [ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews]
+  - KPSS
+  - VarianceRatio
+path_to_save_data: "./data.nosync/mwc2022/results/stationarity_checks_bilateral.json" # the format has to be json

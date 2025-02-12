@@ -23,11 +23,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config_path",
     help="echo the string you use here",
-    default="src/run/ml/config_nested.yml",
+    default="src/run/ml/config_nested_temporal_consistency.yml",
 )
 args = parser.parse_args()
 
-basicConfig(filename="logs/run_nested.log", level=DEBUG)
+basicConfig(filename="logs/run_nested_temporal_consistency.log", level=DEBUG)
 
 logger = getLogger("main")
 
@@ -141,6 +141,16 @@ def main():
         features_left_right: ndarray = concatenate(
             (features_left, features_right), axis=1
         )
+        # NOTE: To double check that the model is not overfitting when using
+        # data from both sides, we just duplicate the data as to add "more
+        # features"
+        features_left_left: ndarray = concatenate(
+            (features_left, features_left), axis=1
+        )
+        features_right_right: ndarray = concatenate(
+            (features_right, features_right), axis=1
+        )
+        
         features_left_diff: ndarray = concatenate(
             (features_left, features_diff), axis=1
         )
@@ -158,6 +168,8 @@ def main():
         ):
             logger.info("Labels are the same. Just using one for combination")
             labels_left_right: ndarray = labels_left
+            labels_left_left: ndarray = labels_left
+            labels_right_right: ndarray = labels_left
             labels_left_diff: ndarray = labels_left
             labels_right_diff: ndarray = labels_left
             labels_all: ndarray = labels_left
@@ -174,6 +186,8 @@ def main():
             logger.info("Labels are the same. Just using one for combination")
             groups_left_right: ndarray = groups_left
             groups_left_diff: ndarray = groups_left
+            groups_left_left: ndarray = groups_left
+            groups_right_right: ndarray = groups_left
             groups_right_diff: ndarray = groups_left
             groups_all: ndarray = groups_left
         else:
@@ -207,6 +221,30 @@ def main():
                 if not debug_mode
                 else groups_left_right[:200],
             },
+            # NOTE: added for double check of overfitting. See above
+            "left+left": {
+                "features": features_left_left
+                if not debug_mode
+                else features_left_left[:200],
+                "labels": labels_left_left
+                if not debug_mode
+                else labels_left_left[:200],
+                "groups": groups_left_left
+                if not debug_mode
+                else groups_left_left[:200],
+            },
+            "right+right": {
+                "features": features_right_right
+                if not debug_mode
+                else features_right_right[:200],
+                "labels": labels_right_right
+                if not debug_mode
+                else labels_right_right[:200],
+                "groups": groups_right_right
+                if not debug_mode
+                else groups_right_right[:200],
+            },
+            
             "left+diff": {
                 "features": features_left_diff
                 if not debug_mode

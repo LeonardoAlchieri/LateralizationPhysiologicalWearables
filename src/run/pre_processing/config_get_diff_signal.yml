@@ -1,0 +1,6 @@
+dataset: "usilaughs" #accepted values are "usilaughs" or "mwc2022"
+path_to_data: "./data.nosync/usilaughs/filtered_complete_cut/*/EDA/*.parquet"
+data_format: "parquet"
+signal_component: "mixed-EDA"
+methods: # choose among one or more of the following -> [ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews]
+path_to_save_data: "./data.nosync/usilaughs/results/stationarity_checks.json" # the format has to be json

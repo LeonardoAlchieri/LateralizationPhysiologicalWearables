@@ -5,7 +5,7 @@ from sys import path
 from typing import Any, Callable
 from warnings import warn
 
-from arch.unitroot import ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews
+from arch.unitroot import ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews, VarianceRatio
 from matplotlib.pyplot import figure, savefig, show, title
 from pandas import DataFrame, IndexSlice, Timestamp
 from seaborn import heatmap
@@ -25,6 +25,7 @@ possible_methods: dict[str, Callable] = {
     "KPSS": KPSS,
     "PhillipsPerron": PhillipsPerron,
     "ZivotAndrews": ZivotAndrews,
+    "VarianceRatio": VarianceRatio,
 }
 
 
@@ -37,9 +38,16 @@ def check_stationarity(
     nested: bool = False,
     no_plot: bool = False,
 ):
+    sides_keys = list(physiological_data.keys())
+
     users_left = physiological_data["left"].keys()
     users_right = physiological_data["right"].keys()
-    user_list = list(set(users_left) & set(users_right))
+    if "diff" in physiological_data.keys():
+        users_diff = physiological_data["diff"].keys()
+    else:
+        users_diff = users_left
+
+    user_list = list(set(users_left) & set(users_right) & set(users_diff))
 
     statistical_test = {
         side: {
@@ -68,11 +76,16 @@ def check_stationarity(
                 for session_name in list(
                     set(physiological_data["right"][user].keys())
                     & set(physiological_data["left"][user].keys())
+                    & (
+                        set(physiological_data["diff"][user].keys())
+                        if "diff" in physiological_data.keys()
+                        else set(physiological_data["left"][user].keys())
+                    )
                 )
             }
             for user in tqdm(user_list, desc="User progress", colour="blue")
         }
-        for side in ["left", "right"]
+        for side in sides_keys
     }
     if nested:
         reform = {
@@ -169,7 +182,7 @@ def main():
         warn(
             "Methods to run stationarity not specified. Runnining all — might be heavy computationally."
         )
-        methods: list[Callable] = [ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews]
+        methods: list[Callable] = [ADF, DFGLS, KPSS, PhillipsPerron, ZivotAndrews, VarianceRatio]
     else:
         methods: list[Callable] = [possible_methods[method] for method in methods]
 

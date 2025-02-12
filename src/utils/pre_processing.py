@@ -318,12 +318,22 @@ def trim_to_shortest(
 
     users_left = list(signal_data["left"].keys())
     users_right = list(signal_data["right"].keys())
-    users = list(set(users_left) & set(users_right))
+    if "diff" in signal_data.keys():
+        users_diff = list(signal_data["diff"].keys())
+        bilateral: bool = True
+    else:
+        users_diff = users_left
+    users = list(set(users_left) & set(users_right) & set(users_diff))
     for user in tqdm(users, desc=f"Trimming. User progress"):
+        
         user_data_left: DataFrame = signal_data["left"][user]
         user_data_right: DataFrame = signal_data["right"][user]
+        if bilateral:
+            user_data_diff: DataFrame = signal_data["diff"][user]
+        
         sessions_left = user_data_left.index.get_level_values("session").unique()
         sessions_right = user_data_right.index.get_level_values("session").unique()
+        
         sessions = list(set(sessions_left) & set(sessions_right))
         for session in sessions:
             session_data_left = user_data_left.loc[IndexSlice[session, :], :].droplevel(
@@ -332,6 +342,10 @@ def trim_to_shortest(
             session_data_right = user_data_right.loc[
                 IndexSlice[session, :], :
             ].droplevel(level=0, axis=0)
+            session_data_diff = user_data_diff.loc[IndexSlice[session, :], :].droplevel(
+                level=0, axis=0
+            )
+            
 
             max_start = max(
                 session_data_left.index.get_level_values("timestamp").min(),
@@ -349,6 +363,11 @@ def trim_to_shortest(
             session_data_right = session_data_right[
                 (session_data_right.index >= max_start)
                 & (session_data_right.index <= min_end)
+            ]
+            if bilateral:
+                session_data_diff = session_data_diff[
+                (session_data_diff.index >= max_start)
+                & (session_data_diff.index <= min_end)
             ]
             if session_data_left.shape != session_data_right.shape:
                 longest_index = (
@@ -371,6 +390,10 @@ def trim_to_shortest(
                 session_data_right = session_data_right[
                     (session_data_right.index < cutoff_index)
                 ]
+                if bilateral:
+                    session_data_diff = session_data_diff[
+                    (session_data_diff.index < cutoff_index)
+                ]
                 if session_data_left.shape != session_data_right.shape:
                     raise RuntimeError("fuck")
 
@@ -378,5 +401,8 @@ def trim_to_shortest(
                 raise RuntimeError("double fuck")
             new_physiological_data["left"][user][session] = session_data_left
             new_physiological_data["right"][user][session] = session_data_right
+            if bilateral:
+                new_physiological_data["diff"][user][session] = session_data_diff
+            
 
     return new_physiological_data
