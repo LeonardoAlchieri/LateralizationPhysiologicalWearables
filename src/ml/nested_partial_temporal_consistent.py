@@ -7,6 +7,8 @@ from signal import SIGALRM
 from signal import alarm as timeout_alarm
 from signal import signal
 from typing import Any, Callable, Generator, Iterable
+from sklearn.exceptions import ConvergenceWarning
+from threadpoolctl import threadpool_limits
 
 
 import pandas as pd
@@ -29,6 +31,7 @@ from sklearn.experimental import enable_halving_search_cv
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.model_selection import StratifiedKFold, HalvingRandomSearchCV
 from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.utils._testing import ignore_warnings
 from tqdm.auto import tqdm
 
 from src.ml import local_resampling, resampling
@@ -69,7 +72,7 @@ def preprocessing(
     )
     return preprocessor
 
-
+@ignore_warnings(category=(ConvergenceWarning, RuntimeWarning))
 def perform_grid_search_estimation(
     classifier: ClassifierMixin,
     random_state_classifier: int,
@@ -100,7 +103,7 @@ def perform_grid_search_estimation(
             n_candidates=n_candidates,
             max_resources=max_resources,
             # n_iter=max_resources,
-            n_jobs=1,
+            n_jobs=-1,
             random_state=random_state_classifier,
             # error_score="raise",
         ),
@@ -110,7 +113,6 @@ def perform_grid_search_estimation(
     acc = balanced_accuracy_score(y_test, yhat)
     return classifier.__name__, acc
     # models[classifier.__name__] = acc
-
 
 def single_classifier_training(
     classifier: ClassifierMixin,
@@ -122,6 +124,7 @@ def single_classifier_training(
     y_train: ndarray,
     x_test: ndarray,
     y_test: ndarray,
+    pbar,
     max_resources: int | str = "auto",
     timeout: int | None = None,
     n_candidates: str | int = "exhaust",
@@ -148,6 +151,9 @@ def single_classifier_training(
     #         print(f"Classifier stuck: {classifier.__name__}")
     #         result = classifier.__name__, nan
     # else:
+    # with threadpool_limits(limits=1):
+    # print classifer name
+    pbar.set_description(f"Classifier: {classifier.__name__}")
     result = perform_grid_search_estimation(
         classifier=classifier,
         random_state_classifier=random_state_classifier,
@@ -182,7 +188,11 @@ def fit_with_hyperparameters(
     folds_inner = list(folds_inner)
 
     preprocessor = preprocessing(x_train)
-
+    pbar = tqdm(CLASSIFIERS_HYPERPARAMETER_LIST.items(), 
+                                             desc="Classifier progress", 
+                                            colour="red",
+                                            position=3, 
+                                            leave=False)
     models: list[tuple[str, float]] = [
         single_classifier_training(
             classifier=classifier,
@@ -197,8 +207,9 @@ def fit_with_hyperparameters(
             max_resources=max_resources,
             timeout=timeout,
             n_candidates=n_candidates,
+            pbar=pbar,
         )
-        for classifier, search_space in CLASSIFIERS_HYPERPARAMETER_LIST.items()
+        for classifier, search_space in pbar
     ]
     models: dict[str, float] = {k: v for k, v in models}
 
@@ -497,33 +508,59 @@ def run_nested_cross_validation_prediction(
             random_states_folds, random_states_undersampling, random_states_classifiers
         )
     )
-
-    with joblib_progress(
-        "Random seed iterations", total=len(list(possible_combinations))
-    ):
-        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
-            n_jobs=kwargs.get("n_jobs", 1), backend="loky"
-        )(
-            delayed(compute_outer_folds_same_side)(
-                id=i,
-                data=data,
-                n_outer_folds=n_outer_folds,
-                n_inner_folds=n_inner_folds,
-                random_state_fold=random_state_fold,
-                random_state_classifier=random_state_classifier,
-                random_state_undersampling=random_state_undersampling,
-                classifiers=kwargs.get("classifiers", "all"),
-                resampling_method=kwargs.get("resampling_method", None),
-                max_resources=kwargs.get("max_resources", "auto"),
-                timeout=kwargs.get("timeout", None),
-                n_candidates=kwargs.get("n_candidates", "exhaust"),
+    n_jobs = kwargs.get("n_jobs", 1)
+    if n_jobs > 1:
+        with joblib_progress(
+            "Random seed iterations", total=len(list(possible_combinations))
+        ):
+            outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = Parallel(
+                n_jobs=kwargs.get("n_jobs", 1), backend="loky"
+            )(
+                delayed(compute_outer_folds_same_side)(
+                    id=i,
+                    data=data,
+                    n_outer_folds=n_outer_folds,
+                    n_inner_folds=n_inner_folds,
+                    random_state_fold=random_state_fold,
+                    random_state_classifier=random_state_classifier,
+                    random_state_undersampling=random_state_undersampling,
+                    classifiers=kwargs.get("classifiers", "all"),
+                    resampling_method=kwargs.get("resampling_method", None),
+                    max_resources=kwargs.get("max_resources", "auto"),
+                    timeout=kwargs.get("timeout", None),
+                    n_candidates=kwargs.get("n_candidates", "exhaust"),
+                )
+                for i, (
+                    random_state_fold,
+                    random_state_undersampling,
+                    random_state_classifier,
+                ) in enumerate(possible_combinations)
             )
-            for i, (
-                random_state_fold,
-                random_state_undersampling,
-                random_state_classifier,
-            ) in enumerate(possible_combinations)
-        )
+    else:
+        outer_folds_output: list[tuple[list, list[list[DataFrame]]]] = (compute_outer_folds_same_side(
+                    id=i,
+                    data=data,
+                    n_outer_folds=n_outer_folds,
+                    n_inner_folds=n_inner_folds,
+                    random_state_fold=random_state_fold,
+                    random_state_classifier=random_state_classifier,
+                    random_state_undersampling=random_state_undersampling,
+                    classifiers=kwargs.get("classifiers", "all"),
+                    resampling_method=kwargs.get("resampling_method", None),
+                    max_resources=kwargs.get("max_resources", "auto"),
+                    timeout=kwargs.get("timeout", None),
+                    n_candidates=kwargs.get("n_candidates", "exhaust"),
+                )
+                for i, (
+                    random_state_fold,
+                    random_state_undersampling,
+                    random_state_classifier,
+                ) in tqdm(enumerate(possible_combinations), 
+                          total=len(possible_combinations), 
+                          desc="Random seed iterations", 
+                          colour="blue",
+                          position=4, 
+                          leave=True))
 
     results = [outer_fold[1] for outer_fold in outer_folds_output]
     all_results = [outer_fold[0] for outer_fold in outer_folds_output]
